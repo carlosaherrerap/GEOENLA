@@ -14,9 +14,10 @@ import {
   Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import { apiService } from '../services/api';
 import { locationTracking } from '../services/location';
-import { offlineStorage } from '../services/storage';
+import { offlineStorage, ManualGpsPoint } from '../services/storage';
 
 interface ActivityItem {
   id: string;
@@ -76,6 +77,73 @@ export const ActivitiesScreen: React.FC<Props> = ({
   const [isOfflineMode, setIsOfflineMode] = useState(false);
   const [isTransmitting, setIsTransmitting] = useState(false);
   const [showConsentModal, setShowConsentModal] = useState(false);
+  const [manualGpsLogs, setManualGpsLogs] = useState<ManualGpsPoint[]>([]);
+  const [capturingGps, setCapturingGps] = useState(false);
+  const [showGpsHistory, setShowGpsHistory] = useState(false);
+
+  const loadManualGpsLogs = async () => {
+    const logs = await offlineStorage.getManualGpsPoints();
+    setManualGpsLogs(logs);
+  };
+
+  useEffect(() => {
+    loadManualGpsLogs();
+  }, []);
+
+  const handleCaptureInstantLocation = async () => {
+    setCapturingGps(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permiso denegado', 'Se requiere permiso de ubicación para probar la captura GPS.');
+        return;
+      }
+
+      // Obtener coordenadas de máxima precisión directamente del hardware GPS del dispositivo
+      const pos = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.BestForNavigation,
+      });
+
+      // Verificar conectividad real a internet de forma síncrona
+      let online = false;
+      try {
+        await Promise.race([
+          fetch('https://clients3.google.com/generate_204', { method: 'HEAD' }),
+          new Promise((_, reject) => setTimeout(() => reject('timeout'), 3000))
+        ]);
+        online = true;
+      } catch (_e) {
+        online = false;
+      }
+
+      const newPoint: ManualGpsPoint = {
+        id: Date.now().toString(),
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        accuracy: pos.coords.accuracy || 0,
+        timestamp: new Date().toISOString(),
+        isOnline: online,
+      };
+
+      await offlineStorage.saveManualGpsPoint(newPoint);
+      await loadManualGpsLogs();
+      setShowGpsHistory(true);
+
+      Alert.alert(
+        'Ubicación Capturada',
+        `Lat: ${newPoint.lat.toFixed(6)}\nLng: ${newPoint.lng.toFixed(6)}\nPrecisión: ±${newPoint.accuracy.toFixed(1)}m\nRed: ${online ? 'ONLINE (Conectado)' : 'OFFLINE (Modo Desierto/Sin Red)'}`
+      );
+    } catch (err: any) {
+      Alert.alert('Error GPS', err.message || 'No se pudo obtener la ubicación instantánea.');
+    } finally {
+      setCapturingGps(false);
+    }
+  };
+
+  const handleClearGpsHistory = async () => {
+    await offlineStorage.clearManualGpsPoints();
+    setManualGpsLogs([]);
+  };
 
   // Extraer únicamente las rutas pertenecientes al usuario autenticado a partir de sus actividades asignadas
   const userRoutes = React.useMemo(() => {
@@ -410,6 +478,85 @@ export const ActivitiesScreen: React.FC<Props> = ({
           trackColor={{ false: '#D1D5DB', true: '#93C5FD' }}
           thumbColor={isTransmitting ? '#024ad8' : '#9CA3AF'}
         />
+      </View>
+
+      {/* Botón de Prueba: Obtener Ubicación Instantánea (GPS Directo) */}
+      <View style={{ marginHorizontal: 16, marginTop: 8, marginBottom: 6 }}>
+        <TouchableOpacity
+          style={{
+            backgroundColor: '#024ad8',
+            borderRadius: 12,
+            paddingVertical: 12,
+            paddingHorizontal: 16,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            elevation: 3,
+          }}
+          onPress={handleCaptureInstantLocation}
+          disabled={capturingGps}
+          activeOpacity={0.85}
+        >
+          {capturingGps ? (
+            <ActivityIndicator color="#FFFFFF" size="small" />
+          ) : (
+            <Ionicons name="location" size={18} color="#FFFFFF" />
+          )}
+          <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 13, letterSpacing: 0.3 }}>
+            {capturingGps ? 'OBTENIENDO GPS HARDWARE...' : 'OBTENER UBICACIÓN INSTANTÁNEA'}
+          </Text>
+        </TouchableOpacity>
+
+        {/* Botón para Desplegar/Ocultar Historial de Pruebas Manuales */}
+        {manualGpsLogs.length > 0 && (
+          <View style={{ marginTop: 8, backgroundColor: '#FFFFFF', borderRadius: 10, borderWidth: 1, borderColor: '#E5E7EB', padding: 10 }}>
+            <TouchableOpacity
+              style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
+              onPress={() => setShowGpsHistory(!showGpsHistory)}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Ionicons name="journal-outline" size={16} color="#3E6AE1" />
+                <Text style={{ fontSize: 12, fontWeight: '700', color: '#171A20' }}>
+                  Historial de Capturas GPS ({manualGpsLogs.length})
+                </Text>
+              </View>
+              <Ionicons name={showGpsHistory ? 'chevron-up' : 'chevron-down'} size={16} color="#6B7280" />
+            </TouchableOpacity>
+
+            {showGpsHistory && (
+              <View style={{ marginTop: 10, borderTopWidth: 1, borderTopColor: '#F3F4F6', paddingTop: 8 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <Text style={{ fontSize: 11, color: '#6B7280' }}>Registros persistentes en SQLite</Text>
+                  <TouchableOpacity onPress={handleClearGpsHistory}>
+                    <Text style={{ fontSize: 11, color: '#EF4444', fontWeight: '700' }}>Limpiar</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {manualGpsLogs.slice(0, 10).map((log) => (
+                  <View key={log.id} style={{ backgroundColor: '#F9FAFB', padding: 8, borderRadius: 8, marginBottom: 6, borderWidth: 1, borderColor: '#E5E7EB' }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#171A20' }}>
+                        Lat: {log.lat.toFixed(5)}, Lng: {log.lng.toFixed(5)}
+                      </Text>
+                      <Text style={{ fontSize: 10, fontWeight: '800', color: log.isOnline ? '#16A34A' : '#D97706' }}>
+                        {log.isOnline ? 'ONLINE' : 'OFFLINE (SQLite)'}
+                      </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                      <Text style={{ fontSize: 10, color: '#6B7280' }}>
+                        Precisión: ±{log.accuracy.toFixed(1)}m
+                      </Text>
+                      <Text style={{ fontSize: 10, color: '#6B7280' }}>
+                        {new Date(log.timestamp).toLocaleTimeString()}
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
       </View>
 
       {/* Selector de Fecha (Ayer, Hoy, Mañana) */}

@@ -19,12 +19,22 @@ export interface SyncItem {
   recorded_at: string;
 }
 
+export interface ManualGpsPoint {
+  id: string;
+  lat: number;
+  lng: number;
+  accuracy: number;
+  timestamp: string;
+  isOnline: boolean;
+}
+
 const STORAGE_KEYS = {
   TRACKING_QUEUE: '@enlageo_tracking_queue',
   SYNC_QUEUE: '@enlageo_sync_queue',
   ACTIVITIES_CACHE: '@enlageo_activities_cache',
   SWITCH_STATE: '@enlageo_switch_state',
   CONSENT_ACCEPTED: '@enlageo_consent_accepted',
+  MANUAL_GPS_LOGS: '@enlageo_manual_gps_logs',
 };
 
 class OfflineStorageService {
@@ -166,6 +176,33 @@ class OfflineStorageService {
       await AsyncStorage.setItem(STORAGE_KEYS.CONSENT_ACCEPTED, accepted ? 'true' : 'false');
     } catch (err) {
       console.error('[OfflineStorage] Error guardando consent state:', err);
+    }
+  }
+
+  public async saveManualGpsPoint(point: ManualGpsPoint): Promise<void> {
+    try {
+      const existing = await this.getManualGpsPoints();
+      const updated = [point, ...existing].slice(0, 50); // Guardar máximo 50 capturas manuales
+      await AsyncStorage.setItem(STORAGE_KEYS.MANUAL_GPS_LOGS, JSON.stringify(updated));
+    } catch (err) {
+      console.error('[OfflineStorage] Error guardando punto GPS manual:', err);
+    }
+  }
+
+  public async getManualGpsPoints(): Promise<ManualGpsPoint[]> {
+    try {
+      const val = await AsyncStorage.getItem(STORAGE_KEYS.MANUAL_GPS_LOGS);
+      return val ? JSON.parse(val) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  public async clearManualGpsPoints(): Promise<void> {
+    try {
+      await AsyncStorage.removeItem(STORAGE_KEYS.MANUAL_GPS_LOGS);
+    } catch (err) {
+      console.error('[OfflineStorage] Error limpiando historial GPS:', err);
     }
   }
 }

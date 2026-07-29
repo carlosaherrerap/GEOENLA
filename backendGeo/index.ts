@@ -498,40 +498,68 @@ protectedRoutes.post('/trackings', async (req: any, res) => {
   });
 });
 
-protectedRoutes.post('/trackings/bulk', async (req: any, res) => {
-  const { points } = req.body;
-  if (!points || !Array.isArray(points) || points.length === 0) {
-    return res.status(400).json({ message: 'No hay puntos para registrar.' });
+const handleBatchTrackingSync = async (req: any, res: any) => {
+  try {
+    const rawPoints = req.body.points || req.body.trackings || req.body.operations || req.body.items || [];
+    if (!Array.isArray(rawPoints) || rawPoints.length === 0) {
+      return res.status(200).json({ message: 'Sin puntos para sincronizar.', count: 0 });
+    }
+
+    // Ordenar cronológicamente por timestamp (recorded_at) para preservar el timeline perfecto 1 -> 2 -> 3
+    const sortedPoints = rawPoints
+      .filter((p: any) => p && (p.lat !== undefined || p.payload?.lat !== undefined))
+      .map((p: any) => p.payload ? { ...p.payload, recorded_at: p.recorded_at || p.payload.recorded_at } : p)
+      .sort((a: any, b: any) => new Date(a.recorded_at || a.timestamp || 0).getTime() - new Date(b.recorded_at || b.timestamp || 0).getTime());
+
+    if (sortedPoints.length === 0) {
+      return res.status(200).json({ message: 'Sin puntos válidos para sincronizar.', count: 0 });
+    }
+
+    const mappedPoints = sortedPoints.map((p: any) => ({
+      id_user: req.user.id,
+      id_activity: p.id_activity || null,
+      lat: Number(p.lat),
+      lng: Number(p.lng),
+      accuracy: p.accuracy ? Number(p.accuracy) : null,
+      speed: p.speed ? Number(p.speed) : null,
+      battery_level: p.battery_level ? Number(p.battery_level) : null,
+      recorded_at: p.recorded_at ? new Date(p.recorded_at) : (p.timestamp ? new Date(p.timestamp) : new Date()),
+      is_synced: true,
+    }));
+
+    await prisma.trackings.createMany({ data: mappedPoints });
+
+    // Actualizar última posición en cache Redis con el último punto del lote cronológico
+    const lastPoint = mappedPoints[mappedPoints.length - 1];
+    await setLatestUserLocation(req.user.id, {
+      lat: lastPoint.lat,
+      lng: lastPoint.lng,
+      accuracy: lastPoint.accuracy,
+      speed: lastPoint.speed,
+      battery_level: lastPoint.battery_level,
+      id_activity: lastPoint.id_activity,
+      recorded_at: lastPoint.recorded_at.toISOString(),
+    }).catch(() => {});
+
+    // Actualizar estado del dispositivo a ACTIVO
+    await prisma.device_details.upsert({
+      where: { id_user: req.user.id },
+      update: { last_seen_at: new Date() },
+      create: { id_user: req.user.id, last_seen_at: new Date() },
+    }).catch(() => {});
+
+    console.log(`[SyncBatch] ${mappedPoints.length} puntos offline sincronizados para usuario ${req.user.username || req.user.id}`);
+
+    res.status(200).json({ message: `${mappedPoints.length} puntos sincronizados correctamente.`, count: mappedPoints.length });
+  } catch (err: any) {
+    console.error('[SyncBatch ERROR]', err);
+    res.status(500).json({ message: err.message || 'Error al procesar la sincronización.' });
   }
+};
 
-  const mappedPoints = points.map((p: any) => ({
-    id_user: req.user.id,
-    id_activity: p.id_activity || null,
-    lat: p.lat,
-    lng: p.lng,
-    accuracy: p.accuracy,
-    speed: p.speed,
-    battery_level: p.battery_level,
-    recorded_at: new Date(p.recorded_at),
-    is_synced: false,
-  }));
-
-  await prisma.trackings.createMany({ data: mappedPoints });
-
-  // Update Redis with the most recent point in the batch
-  const lastPoint = mappedPoints[mappedPoints.length - 1];
-  await setLatestUserLocation(req.user.id, {
-    lat: Number(lastPoint.lat),
-    lng: Number(lastPoint.lng),
-    accuracy: lastPoint.accuracy ? Number(lastPoint.accuracy) : null,
-    speed: lastPoint.speed ? Number(lastPoint.speed) : null,
-    battery_level: lastPoint.battery_level ? Number(lastPoint.battery_level) : null,
-    id_activity: lastPoint.id_activity || null,
-    recorded_at: lastPoint.recorded_at.toISOString(),
-  });
-
-  res.status(201).json({ message: `${mappedPoints.length} puntos sincronizados.`, count: mappedPoints.length });
-});
+protectedRoutes.post('/trackings/bulk', handleBatchTrackingSync);
+protectedRoutes.post('/trackings/sync-batch', handleBatchTrackingSync);
+protectedRoutes.post('/sync', handleBatchTrackingSync);
 
 // Real-time live locations from Redis (Fast O(1) read for 60+ users)
 protectedRoutes.get('/trackings/live', async (req: any, res) => {
