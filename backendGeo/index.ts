@@ -77,18 +77,27 @@ app.get('/api/ping', (req, res) => res.json({ pong: true }));
 // Login
 app.post('/api/login', async (req, res) => {
   try {
-    const { correo, clave } = req.body;
-    console.log(`[LOGIN ATTEMPT] Intento de acceso con correo: ${correo}`);
+    const { username, correo, clave } = req.body;
+    const identifier = (username || correo || '').trim();
 
-    const user = await prisma.users.findUnique({ where: { correo } });
+    console.log(`[LOGIN ATTEMPT] Intento de acceso con usuario: ${identifier}`);
+
+    const user = await prisma.users.findFirst({
+      where: {
+        OR: [
+          { username: identifier },
+          { correo: identifier },
+        ]
+      }
+    });
 
     if (!user) {
-      console.log(`[LOGIN FAILED] Usuario no encontrado: ${correo}`);
+      console.log(`[LOGIN FAILED] Usuario no encontrado: ${identifier}`);
       return res.status(401).json({ message: 'Credenciales incorrectas.' });
     }
 
     if (!bcrypt.compareSync(clave, user.clave)) {
-      console.log(`[LOGIN FAILED] Contraseña incorrecta para: ${correo}`);
+      console.log(`[LOGIN FAILED] Contraseña incorrecta para: ${identifier}`);
       return res.status(401).json({ message: 'Credenciales incorrectas.' });
     }
 

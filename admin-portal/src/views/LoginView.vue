@@ -17,14 +17,14 @@
 
       <form @submit.prevent="handleLogin">
         <div class="form-group">
-          <label class="form-label">Correo Electrónico</label>
+          <label class="form-label">Usuario</label>
           <input
-            v-model="form.correo"
-            type="email"
+            v-model="form.username"
+            type="text"
             class="form-input"
-            placeholder="admin@enlageo.com"
+            placeholder="Ingresa tu usuario"
             required
-            autocomplete="email"
+            autocomplete="username"
           />
         </div>
 
@@ -55,7 +55,7 @@ import api from '../services/api'
 
 const router = useRouter()
 
-const form = ref({ correo: '', clave: '' })
+const form = ref({ username: '', clave: '' })
 const error = ref('')
 const loading = ref(false)
 

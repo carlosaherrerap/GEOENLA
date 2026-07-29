@@ -53,10 +53,10 @@ async function request(endpoint: string, options: RequestInit = {}) {
 }
 
 export const apiService = {
-  async login(correo: string, clave: string, deviceName = 'React Native App') {
+  async login(username: string, clave: string, deviceName = 'React Native App') {
     const data = await request('/login', {
       method: 'POST',
-      body: JSON.stringify({ correo, clave, device_name: deviceName }),
+      body: JSON.stringify({ username, clave, device_name: deviceName }),
     });
     setAuthToken(data.token);
     return data;

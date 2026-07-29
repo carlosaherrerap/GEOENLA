@@ -17,20 +17,20 @@ interface Props {
 }
 
 export const LoginScreen: React.FC<Props> = ({ onLoginSuccess }) => {
-  const [correo, setCorreo] = useState('jperez@geoapp.com');
-  const [clave, setClave] = useState('password123');
+  const [username, setUsername] = useState('');
+  const [clave, setClave] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
-    if (!correo || !clave) {
-      Alert.alert('Error', 'Por favor ingresa correo y contraseña.');
+    if (!username.trim() || !clave) {
+      Alert.alert('Error', 'Por favor ingresa tu usuario y contraseña.');
       return;
     }
 
     setLoading(true);
     try {
-      const response = await apiService.login(correo, clave);
-      locationTracking.setUserEmail(response.user?.correo || correo);
+      const response = await apiService.login(username.trim(), clave);
+      locationTracking.setUserEmail(response.user?.correo || `${username.trim()}@enlageo.com`);
       locationTracking.startTracking();
 
       // Transmitir detalles reales del dispositivo activo al servidor automáticamente al iniciar sesión
@@ -58,15 +58,15 @@ export const LoginScreen: React.FC<Props> = ({ onLoginSuccess }) => {
         <Text style={styles.subtitle}>Trabajadores de Campo</Text>
 
         <View style={styles.inputContainer}>
-          <Text style={styles.label}>Correo Electrónico</Text>
+          <Text style={styles.label}>Usuario</Text>
           <TextInput
             style={styles.input}
-            value={correo}
-            onChangeText={setCorreo}
-            placeholder="usuario@geoapp.com"
+            value={username}
+            onChangeText={setUsername}
+            placeholder="Ingresa tu usuario"
             placeholderTextColor="#666688"
-            keyboardType="email-address"
             autoCapitalize="none"
+            autoCorrect={false}
           />
         </View>
 
