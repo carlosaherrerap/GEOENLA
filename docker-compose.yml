@@ -1,0 +1,103 @@
+services:
+
+  # 1. Base de datos PostgreSQL con extensión PostGIS
+  # db:
+  #   image: postgis/postgis:16-3.4
+  #   container_name: geoapp_db
+  #   restart: always
+  #   environment:
+  #     POSTGRES_DB: geoapp
+  #     POSTGRES_USER: prisma_enla
+  #     POSTGRES_PASSWORD: projectGeoENLA2026
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #     - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  # 2. Backend API prisma (PHP 8.3)
+  # backend:
+  #   build:
+  #     context: ./backendGeo
+  #     dockerfile: Dockerfile
+  #   container_name: geoapp_backend
+  #   restart: always
+  #   ports:
+  #     - "8000:8000"
+  #   environment:
+  #     APP_NAME: GeoApp
+  #     APP_ENV: local
+  #     APP_KEY: base64:yhE3vS9kZlA1Q243dFk2TzdQOGs5SjBhMmIzYzRkNWU=
+  #     APP_DEBUG: "true"
+  #     APP_URL: http://localhost:8000
+  #     DB_CONNECTION: pgsql
+  #     DB_HOST: db
+  #     DB_PORT: 5432
+  #     DB_DATABASE: geoapp
+  #     DB_USERNAME: prisma_enla
+  #     DB_PASSWORD: projectGeoENLA2026
+  #     DATABASE_URL: postgresql://prisma_enla:projectGeoENLA2026@db:5432/geoapp?schema=public
+  #     API_BASE_URL: http://localhost:8000/api
+  #   depends_on:
+  #     - db
+  #   volumes:
+  #     - ./backendGeo:/usr/src/app
+  #     - /usr/src/app/node_modules
+
+  # 3. Portal Web de Administración (Vue 3 + Vite)
+  frontend_web:
+    build:
+      context: ./admin-portal
+      dockerfile: Dockerfile
+    container_name: geoapp_frontend_web
+    restart: always
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_BASE_URL: https://geoapp-backend.onrender.com/api
+    # depends_on:
+    #   - backend
+    volumes:
+      - ./admin-portal:/app
+      - /app/node_modules
+  # 4. Portal Web de Gestión de PostgreSQL (PgAdmin 4)
+  # pgadmin:
+  #   build:
+  #     context: ./pgadmin
+  #     dockerfile: Dockerfile
+  #   container_name: geoapp_pgadmin
+  #   restart: always
+  #   ports:
+  #     - "5050:80"
+  #   environment:
+  #     PGADMIN_DEFAULT_EMAIL: admin@geoapp.com
+  #     PGADMIN_DEFAULT_PASSWORD: admin123
+  #   depends_on:
+  #     - db
+
+  # 5. Cliente Web Ligero para PostgreSQL (Adminer)
+  # adminer:
+  #   image: adminer:latest
+  #   container_name: geoapp_adminer
+  #   restart: always
+  #   ports:
+  #     - "8080:8080"
+  #   depends_on:
+  #     - db
+
+
+  # 5. Redis Server para Caché de Ubicación Realtime
+  redis:
+    image: redis:7-alpine
+    container_name: geoapp_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+# Volúmenes persistentes
+volumes:
+  postgres_data:
+  redis_data:
+

@@ -1,0 +1,74 @@
+{
+  "expo": {
+    "name": "GeoApp",
+    "slug": "geoapp",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35,
+            "minSdkVersion": 24,
+            "buildToolsVersion": "35.0.0"
+          }
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Esta aplicación requiere acceso a tu ubicación para registrar tu trayecto de asistencia.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      "expo-sqlite",
+      "expo-secure-store",
+      "expo-image-picker"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Esta aplicación requiere acceso a tu ubicación para registrar tus visitas a las sedes.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Esta aplicación requiere acceso constante a tu ubicación en segundo plano para registrar tu trayecto de asistencia a la sede.",
+        "NSLocationAlwaysUsageDescription": "Esta aplicación requiere acceso constante a tu ubicación en segundo plano para registrar tu trayecto de asistencia a la sede.",
+        "UIBackgroundModes": [
+          "location",
+          "fetch"
+        ]
+      }
+    },
+    "android": {
+      "package": "com.geoapp.mobile",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyBO4eUI_vqwvcLTfCmai2-YqSnx-2E1N1c"
+        }
+      },
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "36f01a62-78cb-44d9-a8e0-5b578122f3ce"
+      }
+    }
+  }
+}

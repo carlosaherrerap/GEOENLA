@@ -1,0 +1,379 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model personal_access_tokens {
+  id             BigInt    @id @default(autoincrement())
+  tokenable_type String
+  tokenable_id   String
+  name           String
+  token          String    @unique @db.VarChar(64)
+  abilities      String?   @db.Text
+  last_used_at   DateTime? @db.Timestamp(0)
+  expires_at     DateTime? @db.Timestamp(0)
+  created_at     DateTime? @db.Timestamp(0)
+  updated_at     DateTime? @db.Timestamp(0)
+
+  @@index([tokenable_type, tokenable_id])
+  @@map("tokens_acceso_personal")
+}
+
+model ubieties {
+  id         String       @id @default(uuid())
+  latitud    Decimal      @db.Decimal(10, 7)
+  longitud   Decimal      @db.Decimal(10, 7)
+  created_at DateTime?    @default(now()) @db.Timestamp(0)
+  updated_at DateTime?    @updatedAt @db.Timestamp(0)
+
+  locations  locations[]
+  supervisors supervisors[]
+  dialings   dialings[]
+  talks      talks[]
+
+  @@map("ubiedades")
+}
+
+model schedules {
+  id         String       @id @default(uuid())
+  tipo       String
+  ingreso    DateTime     @db.Time(0)
+  salida     DateTime     @db.Time(0)
+  created_at DateTime?    @default(now()) @db.Timestamp(0)
+  updated_at DateTime?    @updatedAt @db.Timestamp(0)
+
+  supervisors supervisors[]
+
+  @@map("horarios")
+}
+
+model periods {
+  id         String       @id @default(uuid())
+  nombre     String
+  fec_inicio DateTime     @db.Timestamp(0)
+  fec_fin    DateTime     @db.Timestamp(0)
+  created_at DateTime?    @default(now()) @db.Timestamp(0)
+  updated_at DateTime?    @updatedAt @db.Timestamp(0)
+
+  activities activities[]
+  routes     routes[]
+
+  @@map("periodos")
+}
+
+model locations {
+  id         String       @id @default(uuid())
+  sede_reg   String
+  sede_juris String
+  nombre     String
+  id_ubiety  String
+  created_at DateTime?    @default(now()) @db.Timestamp(0)
+  updated_at DateTime?    @updatedAt @db.Timestamp(0)
+
+  ubiety     ubieties     @relation(fields: [id_ubiety], references: [id], onDelete: Cascade)
+  
+  activities activities[]
+  supervisors supervisors[]
+  routes     routes[]
+  attendances attendances[]
+
+  @@map("sedes")
+}
+
+model activities {
+  id          String           @id @default(uuid())
+  id_period   String
+  id_location String
+  id_user     String?
+  id_route    String?
+  actividad   String
+  detalle     String           @db.Text
+  estado      String           @default("pendiente")
+  created_at  DateTime?        @default(now()) @db.Timestamp(0)
+  updated_at  DateTime?        @updatedAt @db.Timestamp(0)
+
+  period      periods          @relation(fields: [id_period], references: [id], onDelete: Cascade)
+  location    locations        @relation(fields: [id_location], references: [id], onDelete: Cascade)
+  user        users?           @relation(fields: [id_user], references: [id], onDelete: Cascade)
+  route       routes?          @relation(fields: [id_route], references: [id], onDelete: SetNull)
+  
+  supervisors supervisors[]
+  evidence    evidence[]
+  trackings   trackings[]
+  attendances attendances[]
+  positions   positions[]
+  activityUsers activity_users[]
+
+  @@map("actividades")
+}
+
+model supervisors {
+  id           String       @id @default(uuid())
+  nombres      String
+  ape_pat      String
+  ape_mat      String
+  doc          String       @unique
+  nacionalidad String
+  genero       String
+  telefono     String       @unique @db.VarChar(15)
+  direccion    String
+  id_location  String?
+  id_activity  String?
+  id_ubiety    String?
+  id_turno     String?
+  created_at   DateTime?    @default(now()) @db.Timestamp(0)
+  updated_at   DateTime?    @updatedAt @db.Timestamp(0)
+
+  location     locations?   @relation(fields: [id_location], references: [id], onDelete: SetNull)
+  activity     activities?  @relation(fields: [id_activity], references: [id], onDelete: SetNull)
+  ubiety       ubieties?    @relation(fields: [id_ubiety], references: [id], onDelete: SetNull)
+  schedule     schedules?   @relation(fields: [id_turno], references: [id], onDelete: SetNull)
+  users        users[]
+
+  @@map("supervisores")
+}
+
+model users {
+  id             String           @id @default(uuid())
+  id_supervisor  String?
+  username       String           @unique
+  clave          String           @db.VarChar(60)
+  correo         String           @unique
+  estado         String           @default("activo")
+  rol            String           @default("usuario")
+  created_at     DateTime?        @default(now()) @db.Timestamp(0)
+  updated_at     DateTime?        @updatedAt @db.Timestamp(0)
+
+  supervisor     supervisors?     @relation(fields: [id_supervisor], references: [id], onDelete: SetNull)
+  routes         routes[]
+  trackings      trackings[]
+  attendances    attendances[]
+  deviceDetail   device_details?
+  syncQueues     sync_queues[]
+  activities     activities[]
+  routeUsers     route_users[]
+  activityUsers  activity_users[]
+  
+  chats1         chats[]          @relation("User1")
+  chats2         chats[]          @relation("User2")
+  talks          talks[]
+
+  @@map("usuarios")
+}
+
+model routes {
+  id           String         @id @default(uuid())
+  nombre       String
+  id_user      String?
+  id_sede      String
+  fec_visita   DateTime       @db.Date
+  id_period    String
+  estado       String         @default("pendiente")
+  fec_asignado DateTime?      @default(now()) @db.Date
+  created_at   DateTime?      @default(now()) @db.Timestamp(0)
+  updated_at   DateTime?      @updatedAt @db.Timestamp(0)
+
+  user         users?         @relation(fields: [id_user], references: [id], onDelete: Cascade)
+  location     locations      @relation(fields: [id_sede], references: [id], onDelete: Cascade)
+  period       periods        @relation(fields: [id_period], references: [id], onDelete: Cascade)
+  activities   activities[]
+  routeUsers   route_users[]
+
+  @@map("rutas")
+}
+
+model route_users {
+  id         String    @id @default(uuid())
+  id_route   String
+  id_user    String
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+
+  route      routes    @relation(fields: [id_route], references: [id], onDelete: Cascade)
+  user       users     @relation(fields: [id_user], references: [id], onDelete: Cascade)
+
+  @@unique([id_route, id_user])
+  @@map("ruta_usuarios")
+}
+
+model activity_users {
+  id          String     @id @default(uuid())
+  id_activity String
+  id_user     String
+  created_at  DateTime?  @default(now()) @db.Timestamp(0)
+
+  activity    activities @relation(fields: [id_activity], references: [id], onDelete: Cascade)
+  user        users      @relation(fields: [id_user], references: [id], onDelete: Cascade)
+
+  @@unique([id_activity, id_user])
+  @@map("actividad_usuarios")
+}
+
+model evidence {
+  id          String       @id @default(uuid())
+  id_activity String
+  descripcion String
+  url         String
+  created_at  DateTime?    @default(now()) @db.Timestamp(0)
+  updated_at  DateTime?    @updatedAt @db.Timestamp(0)
+
+  activity    activities   @relation(fields: [id_activity], references: [id], onDelete: Cascade)
+  dialings    dialings[]
+
+  @@map("evidencias")
+}
+
+model dialings {
+  id          String       @id @default(uuid())
+  id_ubiety   String
+  id_evidence String
+  descripcion String
+  fec_emitido DateTime     @db.Date
+  created_at  DateTime?    @default(now()) @db.Timestamp(0)
+  updated_at  DateTime?    @updatedAt @db.Timestamp(0)
+
+  ubiety      ubieties     @relation(fields: [id_ubiety], references: [id], onDelete: Cascade)
+  evidence    evidence     @relation(fields: [id_evidence], references: [id], onDelete: Cascade)
+
+  @@map("marcaciones")
+}
+
+model chats {
+  id               String    @id @default(uuid())
+  id_user_1        String
+  id_user_2        String
+  last_update_chat DateTime? @db.Timestamp(0)
+  created_at       DateTime? @default(now()) @db.Timestamp(0)
+  updated_at       DateTime? @updatedAt @db.Timestamp(0)
+
+  user1            users     @relation("User1", fields: [id_user_1], references: [id], onDelete: Cascade)
+  user2            users     @relation("User2", fields: [id_user_2], references: [id], onDelete: Cascade)
+  talks            talks[]
+
+  @@map("chats")
+}
+
+model talks {
+  id                   String    @id @default(uuid())
+  id_chat              String
+  id_user_send_message String
+  texto                String    @db.Text
+  id_ubiety            String?
+  fec_envio            DateTime  @db.Timestamp(0)
+  estado               String    @default("enviado")
+  created_at           DateTime? @default(now()) @db.Timestamp(0)
+  updated_at           DateTime? @updatedAt @db.Timestamp(0)
+
+  chat                 chats     @relation(fields: [id_chat], references: [id], onDelete: Cascade)
+  sender               users     @relation(fields: [id_user_send_message], references: [id], onDelete: Cascade)
+  ubiety               ubieties? @relation(fields: [id_ubiety], references: [id], onDelete: SetNull)
+
+  @@map("mensajes")
+}
+
+model positions {
+  id          String    @id @default(uuid())
+  id_user     String
+  id_activity String
+  posx        Decimal   @db.Decimal(10, 7)
+  posy        Decimal   @db.Decimal(10, 7)
+  fec_reg     DateTime  @db.Date
+  estado      String    @default("activo")
+  created_at  DateTime? @default(now()) @db.Timestamp(0)
+  updated_at  DateTime? @updatedAt @db.Timestamp(0)
+
+  activity    activities @relation(fields: [id_activity], references: [id])
+
+  @@map("posiciones")
+}
+
+model trackings {
+  id             BigInt       @default(autoincrement())
+  id_user        String
+  id_activity    String?
+  lat            Decimal      @db.Decimal(10, 7)
+  lng            Decimal      @db.Decimal(10, 7)
+  accuracy       Decimal?     @db.Decimal(6, 2)
+  speed          Decimal?     @db.Decimal(6, 2)
+  battery_level  Decimal?     @db.Decimal(5, 2)
+  recorded_at    DateTime     @db.Timestamp(0)
+  is_synced      Boolean      @default(true)
+  created_at     DateTime?    @default(now()) @db.Timestamp(0)
+  updated_at     DateTime?    @updatedAt @db.Timestamp(0)
+
+  user           users        @relation(fields: [id_user], references: [id], onDelete: Cascade)
+  activity       activities?  @relation(fields: [id_activity], references: [id], onDelete: SetNull)
+
+  @@id([id, recorded_at])
+  @@index([id_user, recorded_at])
+  @@index([id_activity, recorded_at])
+  @@index([recorded_at])
+  @@map("seguimientos")
+}
+
+model attendances {
+  id            String       @id @default(uuid())
+  id_user       String
+  id_activity   String
+  id_location   String
+  lat           Decimal      @db.Decimal(10, 7)
+  lng           Decimal      @db.Decimal(10, 7)
+  distance_m    Decimal      @db.Decimal(8, 2)
+  photos        Json
+  observacion   String?      @db.Text
+  checked_in_at DateTime     @db.Timestamp(0)
+  estado        String       @default("completado")
+  created_at    DateTime?    @default(now()) @db.Timestamp(0)
+  updated_at    DateTime?    @updatedAt @db.Timestamp(0)
+
+  user          users        @relation(fields: [id_user], references: [id], onDelete: Cascade)
+  activity      activities   @relation(fields: [id_activity], references: [id], onDelete: Cascade)
+  location      locations    @relation(fields: [id_location], references: [id], onDelete: Cascade)
+
+  @@index([id_user, checked_in_at])
+  @@index([id_activity])
+  @@map("asistencias")
+}
+
+model device_details {
+  id            String       @id @default(uuid())
+  id_user       String       @unique
+  manufacturer  String?      @db.VarChar(100)
+  model         String?      @db.VarChar(100)
+  os            String?      @db.VarChar(50)
+  os_version    String?      @db.VarChar(50)
+  battery_level Decimal?     @db.Decimal(5, 2)
+  battery_state String?
+  app_version   String?      @db.VarChar(50)
+  last_seen_at  DateTime?    @db.Timestamp(0)
+  created_at    DateTime?    @default(now()) @db.Timestamp(0)
+  updated_at    DateTime?    @updatedAt @db.Timestamp(0)
+
+  user          users        @relation(fields: [id_user], references: [id], onDelete: Cascade)
+
+  @@map("detalles_dispositivo")
+}
+
+model sync_queues {
+  id              BigInt    @id @default(autoincrement())
+  id_user         String
+  action          String
+  table_name      String
+  record_id       String?
+  payload         Json
+  attempts        Int       @default(0) @db.SmallInt
+  last_attempt_at DateTime? @db.Timestamp(0)
+  status          String    @default("pending")
+  error_message   String?   @db.Text
+  recorded_at     DateTime  @db.Timestamp(0)
+  created_at      DateTime? @default(now()) @db.Timestamp(0)
+  updated_at      DateTime? @updatedAt @db.Timestamp(0)
+
+  user            users     @relation(fields: [id_user], references: [id], onDelete: Cascade)
+
+  @@index([id_user, status])
+  @@index([status])
+  @@map("colas_sincronizacion")
+}
