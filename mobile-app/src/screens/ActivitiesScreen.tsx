@@ -480,7 +480,8 @@ export const ActivitiesScreen: React.FC<Props> = ({
         />
       </View>
 
-      {/* Botón de Prueba: Obtener Ubicación Instantánea (GPS Directo) */}
+      {/* 
+      Botón de Prueba: Obtener Ubicación Instantánea (GPS Directo) y Dropdown de Historial
       <View style={{ marginHorizontal: 16, marginTop: 8, marginBottom: 6 }}>
         <TouchableOpacity
           style={{
@@ -508,7 +509,6 @@ export const ActivitiesScreen: React.FC<Props> = ({
           </Text>
         </TouchableOpacity>
 
-        {/* Botón para Desplegar/Ocultar Historial de Pruebas Manuales */}
         {manualGpsLogs.length > 0 && (
           <View style={{ marginTop: 8, backgroundColor: '#FFFFFF', borderRadius: 10, borderWidth: 1, borderColor: '#E5E7EB', padding: 10 }}>
             <TouchableOpacity
@@ -558,6 +558,7 @@ export const ActivitiesScreen: React.FC<Props> = ({
           </View>
         )}
       </View>
+      */}
 
       {/* Selector de Fecha (Ayer, Hoy, Mañana) */}
       <View style={styles.filterBar}>

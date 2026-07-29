@@ -6,6 +6,10 @@ node_modules/
 .env
 .env.*
 !.env.example
+*.xlsx
+*.xls
+cuentas.pdf
+ubis.txt
 
 # Logs & Dump Text Files
 *.log
