@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StatusBar, StyleSheet, View, Text, TouchableOpacity, Platform } from 'react-native';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as NavigationBar from 'expo-navigation-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { ActivitiesScreen } from './src/screens/ActivitiesScreen';
@@ -14,12 +16,22 @@ import { locationTracking } from './src/services/location';
 type TabState = 'activities' | 'chat' | 'profile';
 type ViewState = 'main' | 'activity_detail' | 'device_info' | 'error_logs';
 
-export default function App() {
+function MainAppContent() {
+  const insets = useSafeAreaInsets();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<TabState>('activities');
   const [currentView, setCurrentView] = useState<ViewState>('main');
   const [selectedActivity, setSelectedActivity] = useState<any>(null);
+
+  useEffect(() => {
+    // Configurar modo inmersivo sin barra nativa en Android (Samsung y todos los modelos)
+    if (Platform.OS === 'android') {
+      NavigationBar.setVisibilityAsync('hidden').catch(() => {});
+      NavigationBar.setBehaviorAsync('overlay-swipe').catch(() => {});
+      NavigationBar.setBackgroundColorAsync('transparent').catch(() => {});
+    }
+  }, []);
 
   const handleLoginSuccess = (userData: any) => {
     setUser(userData);
@@ -38,17 +50,19 @@ export default function App() {
 
   if (!isLoggedIn) {
     return (
-      <View style={styles.container}>
-        <StatusBar barStyle="dark-content" backgroundColor="#ddd" />
+      <View style={[styles.container, { paddingTop: Math.max(insets.top, 24), paddingBottom: Math.max(insets.bottom, 12) }]}>
+        <StatusBar barStyle="dark-content" backgroundColor="#ddd" translucent />
         <LoginScreen onLoginSuccess={handleLoginSuccess} />
       </View>
     );
   }
 
+  const bottomPadding = Math.max(insets.bottom, 14);
+
   return (
     <ErrorBoundary fallbackText="Ocurrió un inconveniente general en la interfaz. Presiona reintentar para restablecer la vista.">
-      <View style={styles.container}>
-        <StatusBar barStyle="dark-content" backgroundColor="#ddd" />
+      <View style={[styles.container, { paddingTop: Math.max(insets.top, 24) }]}>
+        <StatusBar barStyle="dark-content" backgroundColor="#ddd" translucent />
 
         {/* Main Screens Content */}
         <View style={{ flex: 1 }}>
@@ -85,57 +99,65 @@ export default function App() {
           )}
         </View>
 
-      {/* Bottom Navigation Bar */}
-      {currentView === 'main' && (
-        <View style={styles.bottomTabBar}>
-          <TouchableOpacity
-            style={styles.tabItem}
-            onPress={() => setActiveTab('activities')}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name={activeTab === 'activities' ? 'clipboard' : 'clipboard-outline'}
-              size={22}
-              color={activeTab === 'activities' ? '#3E6AE1' : '#5C5E62'}
-            />
-            <Text style={[styles.tabLabel, activeTab === 'activities' && styles.activeTabLabel]}>
-              Actividades
-            </Text>
-          </TouchableOpacity>
+        {/* Bottom Navigation Bar con Safe Area Padding */}
+        {currentView === 'main' && (
+          <View style={[styles.bottomTabBar, { paddingBottom: bottomPadding, height: 56 + bottomPadding }]}>
+            <TouchableOpacity
+              style={styles.tabItem}
+              onPress={() => setActiveTab('activities')}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={activeTab === 'activities' ? 'clipboard' : 'clipboard-outline'}
+                size={22}
+                color={activeTab === 'activities' ? '#3E6AE1' : '#5C5E62'}
+              />
+              <Text style={[styles.tabLabel, activeTab === 'activities' && styles.activeTabLabel]}>
+                Actividades
+              </Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.tabItem}
-            onPress={() => setActiveTab('chat')}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name={activeTab === 'chat' ? 'chatbubbles' : 'chatbubbles-outline'}
-              size={22}
-              color={activeTab === 'chat' ? '#3E6AE1' : '#5C5E62'}
-            />
-            <Text style={[styles.tabLabel, activeTab === 'chat' && styles.activeTabLabel]}>
-              Chat
-            </Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.tabItem}
+              onPress={() => setActiveTab('chat')}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={activeTab === 'chat' ? 'chatbubbles' : 'chatbubbles-outline'}
+                size={22}
+                color={activeTab === 'chat' ? '#3E6AE1' : '#5C5E62'}
+              />
+              <Text style={[styles.tabLabel, activeTab === 'chat' && styles.activeTabLabel]}>
+                Chat
+              </Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.tabItem}
-            onPress={() => setActiveTab('profile')}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name={activeTab === 'profile' ? 'person' : 'person-outline'}
-              size={22}
-              color={activeTab === 'profile' ? '#3E6AE1' : '#5C5E62'}
-            />
-            <Text style={[styles.tabLabel, activeTab === 'profile' && styles.activeTabLabel]}>
-              Mi Perfil
-            </Text>
-          </TouchableOpacity>
-        </View>
-      )}
+            <TouchableOpacity
+              style={styles.tabItem}
+              onPress={() => setActiveTab('profile')}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={activeTab === 'profile' ? 'person' : 'person-outline'}
+                size={22}
+                color={activeTab === 'profile' ? '#3E6AE1' : '#5C5E62'}
+              />
+              <Text style={[styles.tabLabel, activeTab === 'profile' && styles.activeTabLabel]}>
+                Mi Perfil
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     </ErrorBoundary>
+  );
+}
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <MainAppContent />
+    </SafeAreaProvider>
   );
 }
 
@@ -146,8 +168,6 @@ const styles = StyleSheet.create({
   },
   bottomTabBar: {
     flexDirection: 'row',
-    height: Platform.OS === 'android' ? 76 : 70,
-    paddingBottom: Platform.OS === 'android' ? 14 : 10,
     backgroundColor: '#ffffff',
     borderTopWidth: 1,
     borderTopColor: '#cccccc',

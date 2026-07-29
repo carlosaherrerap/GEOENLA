@@ -144,8 +144,15 @@
                   <input v-model="form.ape_mat" class="form-input" placeholder="Ej: Gomez" required />
                 </div>
                 <div class="form-group">
-                  <label class="form-label">Documento (DNI / CE) *</label>
-                  <input v-model="form.doc" class="form-input" placeholder="Ej: 72839102" required />
+                  <label class="form-label">Documento (DNI 8 dígitos / CE 9-11 dígitos) *</label>
+                  <input
+                    v-model="form.doc"
+                    class="form-input"
+                    placeholder="Ej: 72839102"
+                    maxlength="11"
+                    required
+                    @input="form.doc = form.doc.replace(/\D/g, '').slice(0, 11)"
+                  />
                 </div>
               </div>
               <div class="grid-2">
@@ -164,8 +171,15 @@
               </div>
               <div class="grid-2">
                 <div class="form-group">
-                  <label class="form-label">Teléfono *</label>
-                  <input v-model="form.telefono" class="form-input" placeholder="Ej: 987654321" required />
+                  <label class="form-label">Teléfono (9 dígitos) *</label>
+                  <input
+                    v-model="form.telefono"
+                    class="form-input"
+                    placeholder="Ej: 987654321"
+                    maxlength="9"
+                    required
+                    @input="form.telefono = form.telefono.replace(/\D/g, '').slice(0, 9)"
+                  />
                 </div>
                 <div class="form-group">
                   <label class="form-label">Dirección *</label>
@@ -394,6 +408,16 @@ function handleNext() {
   if (step.value === 1) {
     if (!form.value.nombres || !form.value.ape_pat || !form.value.doc || !form.value.telefono || !form.value.direccion) {
       errorMessage.value = 'Por favor completa todos los campos obligatorios (*).'
+      return
+    }
+    const docClean = String(form.value.doc).trim()
+    if (!/^\d{8,11}$/.test(docClean)) {
+      errorMessage.value = 'El documento debe contener entre 8 y 11 dígitos numéricos.'
+      return
+    }
+    const telClean = String(form.value.telefono).trim()
+    if (!/^\d{9}$/.test(telClean)) {
+      errorMessage.value = 'El teléfono debe contener exactamente 9 dígitos numéricos.'
       return
     }
     step.value = 2

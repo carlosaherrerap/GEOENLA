@@ -170,8 +170,9 @@ function onUserChange() {
 
 async function fetchUsers() {
   try {
-    const { data } = await api.get('/users', { params: { per_page: 100 } })
-    users.value = data.data || []
+    const { data } = await api.get('/users', { params: { per_page: 100, rol: 'usuario' } })
+    const allUsers = data.data || []
+    users.value = allUsers.filter(u => u.rol === 'usuario')
   } catch (err) {
     console.error('Error:', err)
   }

@@ -30,6 +30,12 @@ export const LoginScreen: React.FC<Props> = ({ onLoginSuccess }) => {
     setLoading(true);
     try {
       const response = await apiService.login(username.trim(), clave);
+
+      if (response.user?.rol === 'admin') {
+        Alert.alert('Acceso denegado', 'La aplicación móvil es exclusiva para usuarios de campo.');
+        return;
+      }
+
       locationTracking.setUserEmail(response.user?.correo || `${username.trim()}@enlageo.com`);
       locationTracking.startTracking();
 

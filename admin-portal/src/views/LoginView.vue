@@ -65,6 +65,12 @@ async function handleLogin() {
 
   try {
     const { data } = await api.post('/login', form.value)
+
+    if (data.user?.rol !== 'admin') {
+      error.value = 'Acceso denegado. El portal administrativo está reservado para administradores.'
+      return
+    }
+
     localStorage.setItem('token', data.token)
     localStorage.setItem('user', JSON.stringify(data.user))
     router.push('/')

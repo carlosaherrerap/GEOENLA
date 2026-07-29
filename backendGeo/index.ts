@@ -786,6 +786,19 @@ adminRoutes.post('/users', async (req: any, res: any) => {
       return res.status(400).json({ message: 'Campos requeridos faltantes (nombres, doc, username, clave, correo).' });
     }
 
+    // Validaciones de formato de Documento (8 a 11 dígitos) y Teléfono (9 dígitos)
+    const docClean = String(doc).trim();
+    if (!/^\d{8,11}$/.test(docClean)) {
+      return res.status(400).json({ message: 'El documento debe contener entre 8 y 11 dígitos numéricos.' });
+    }
+
+    if (telefono) {
+      const telClean = String(telefono).trim();
+      if (!/^\d{9}$/.test(telClean)) {
+        return res.status(400).json({ message: 'El teléfono debe contener exactamente 9 dígitos numéricos.' });
+      }
+    }
+
     // 1. Obtener o crear Turno (schedules)
     let selectedShiftId = id_turno;
     if (!selectedShiftId) {

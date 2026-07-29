@@ -71,10 +71,22 @@ export const ActivitiesScreen: React.FC<Props> = ({
   const [refreshing, setRefreshing] = useState(false);
   const [selectedDateFilter, setSelectedDateFilter] = useState<DateFilter>('hoy');
   const [selectedRouteId, setSelectedRouteId] = useState<string>('');
+  const [showRouteDropdownModal, setShowRouteDropdownModal] = useState(false);
   const [serverTodayStr, setServerTodayStr] = useState<string>('');
   const [isOfflineMode, setIsOfflineMode] = useState(false);
   const [isTransmitting, setIsTransmitting] = useState(false);
   const [showConsentModal, setShowConsentModal] = useState(false);
+
+  // Extraer únicamente las rutas pertenecientes al usuario autenticado a partir de sus actividades asignadas
+  const userRoutes = React.useMemo(() => {
+    const routeMap = new Map<string, string>();
+    activities.forEach((act) => {
+      if (act.route && act.route.id && act.route.nombre) {
+        routeMap.set(act.route.id, act.route.nombre);
+      }
+    });
+    return Array.from(routeMap.entries()).map(([id, nombre]) => ({ id, nombre }));
+  }, [activities]);
 
   useEffect(() => {
     fetchActivities();
@@ -113,14 +125,14 @@ export const ActivitiesScreen: React.FC<Props> = ({
       if (res?.serverDate) {
         setServerTodayStr(res.serverDate); // e.g. "2026-07-27"
       }
-    } catch (_e) {}
+    } catch (_e) { }
   };
 
   const fetchRoutes = async () => {
     try {
       const res = await apiService.getRoutes();
       setRoutes(res.data || []);
-    } catch (_e) {}
+    } catch (_e) { }
   };
 
   const fetchActivities = async () => {
@@ -389,7 +401,7 @@ export const ActivitiesScreen: React.FC<Props> = ({
             TRANSMISIÓN DE UBICACIÓN
           </Text>
           <Text style={{ fontSize: 11, color: isTransmitting ? '#2563EB' : '#6B7280', marginTop: 2 }}>
-            {isTransmitting ? 'Transmitiendo ubicación autorizada para INEI...' : 'Transmisión desactivada. Presiona para encender.'}
+            {isTransmitting ? 'Transmitiendo ubicación autorizada' : 'Transmisión desactivada. Presiona para encender.'}
           </Text>
         </View>
         <Switch
@@ -454,36 +466,82 @@ export const ActivitiesScreen: React.FC<Props> = ({
         </TouchableOpacity>
       </View>
 
-      {/* Selector de Filtro por Ruta */}
-      {routes.length > 0 && (
-        <View style={styles.routeFilterRow}>
+      {/* Selector Desplegable Dropdown por Ruta (Solo Rutas Asignadas al Usuario) */}
+      {userRoutes.length > 0 && (
+        <View style={styles.routeFilterContainer}>
           <Text style={styles.routeFilterLabel}>Filtrar por Ruta:</Text>
-          <FlatList
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            data={[{ id: '', nombre: 'Todas' }, ...routes]}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={[
-                  styles.routeChip,
-                  selectedRouteId === item.id && styles.routeChipActive,
-                ]}
-                onPress={() => setSelectedRouteId(item.id)}
-              >
-                <Text
-                  style={[
-                    styles.routeChipText,
-                    selectedRouteId === item.id && styles.routeChipTextActive,
-                  ]}
-                >
-                  {item.nombre}
-                </Text>
-              </TouchableOpacity>
-            )}
-          />
+          <TouchableOpacity
+            style={styles.dropdownSelectorBtn}
+            onPress={() => setShowRouteDropdownModal(true)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="map-outline" size={16} color="#3E6AE1" />
+            <Text style={styles.dropdownSelectorText} numberOfLines={1}>
+              {selectedRouteId
+                ? userRoutes.find((r) => r.id === selectedRouteId)?.nombre || 'Ruta Seleccionada'
+                : 'Todas las Rutas'}
+            </Text>
+            <Ionicons name="chevron-down" size={16} color="#5C5E62" />
+          </TouchableOpacity>
         </View>
       )}
+
+      {/* Modal Dropdown de Selección de Ruta */}
+      <Modal
+        visible={showRouteDropdownModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowRouteDropdownModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowRouteDropdownModal(false)}
+        >
+          <View style={styles.dropdownModalCard}>
+            <Text style={styles.dropdownModalTitle}>Seleccionar Ruta Asignada</Text>
+
+            <TouchableOpacity
+              style={[
+                styles.dropdownOptionItem,
+                selectedRouteId === '' && styles.dropdownOptionActive,
+              ]}
+              onPress={() => {
+                setSelectedRouteId('');
+                setShowRouteDropdownModal(false);
+              }}
+            >
+              <Ionicons
+                name={selectedRouteId === '' ? 'checkmark-circle' : 'ellipse-outline'}
+                size={18}
+                color={selectedRouteId === '' ? '#3E6AE1' : '#6B7280'}
+              />
+              <Text style={styles.dropdownOptionText}>Todas las Rutas</Text>
+            </TouchableOpacity>
+
+            {userRoutes.map((r) => (
+              <TouchableOpacity
+                key={r.id}
+                style={[
+                  styles.dropdownOptionItem,
+                  selectedRouteId === r.id && styles.dropdownOptionActive,
+                ]}
+                onPress={() => {
+                  setSelectedRouteId(r.id);
+                  setShowRouteDropdownModal(false);
+                }}
+              >
+                <Ionicons
+                  name={selectedRouteId === r.id ? 'checkmark-circle' : 'ellipse-outline'}
+                  size={18}
+                  color={selectedRouteId === r.id ? '#3E6AE1' : '#6B7280'}
+                />
+                <Text style={styles.dropdownOptionText}>{r.nombre}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Main List */}
       {loading ? (
@@ -515,8 +573,8 @@ export const ActivitiesScreen: React.FC<Props> = ({
                 {selectedDateFilter === 'hoy'
                   ? 'No tienes tareas asignadas para el día de hoy.'
                   : selectedDateFilter === 'ayer'
-                  ? 'No hubo actividades registradas el día de ayer.'
-                  : 'No hay actividades programadas para mañana.'}
+                    ? 'No hubo actividades registradas el día de ayer.'
+                    : 'No hay actividades programadas para mañana.'}
               </Text>
             </View>
           }
@@ -885,6 +943,73 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 4,
     maxWidth: 260,
+  },
+  routeFilterContainer: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+  },
+  routeFilterLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#374151',
+    marginBottom: 4,
+  },
+  dropdownSelectorBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  dropdownSelectorText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#171A20',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  dropdownModalCard: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 20,
+    elevation: 8,
+  },
+  dropdownModalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#171A20',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  dropdownOptionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    marginBottom: 4,
+  },
+  dropdownOptionActive: {
+    backgroundColor: '#EEF2FF',
+  },
+  dropdownOptionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#171A20',
   },
 });
 
