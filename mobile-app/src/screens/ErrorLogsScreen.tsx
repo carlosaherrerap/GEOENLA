@@ -35,7 +35,25 @@ export const ErrorLogsScreen: React.FC<Props> = ({ onBack }) => {
     });
   };
 
-  const filteredLogs = getFilteredLogs();
+  function formatPayloadSafe(payload: any) {
+    if (!payload) return '{}';
+    try {
+      const copy = JSON.parse(JSON.stringify(payload));
+      if (copy.photos && Array.isArray(copy.photos)) {
+        copy.photos = copy.photos.map((p: string, i: number) =>
+          typeof p === 'string' && p.length > 100
+            ? `[Foto Evidencia #${i + 1} (${(p.length / 1024).toFixed(1)} KB)]`
+            : p
+        );
+      }
+      const str = JSON.stringify(copy, null, 2);
+      return str.length > 3000 ? str.substring(0, 3000) + '\n... [Recortado para agilizar vista]' : str;
+    } catch (_e) {
+      return String(payload).substring(0, 500);
+    }
+  }
+
+  const filteredLogs = getFilteredLogs().slice(0, 50);
 
   return (
     <View style={styles.container}>
@@ -102,7 +120,7 @@ export const ErrorLogsScreen: React.FC<Props> = ({ onBack }) => {
               </View>
 
               <Text style={styles.actionTitle}>Acción: {item.action}</Text>
-              <Text style={styles.payloadText}>{JSON.stringify(item.payload, null, 2)}</Text>
+              <Text style={styles.payloadText}>{formatPayloadSafe(item.payload)}</Text>
             </View>
           ))
         )}

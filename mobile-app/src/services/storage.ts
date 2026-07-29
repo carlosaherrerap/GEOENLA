@@ -66,9 +66,13 @@ class OfflineStorageService {
 
   private async persistSyncQueue(): Promise<void> {
     try {
+      // Mantener un máximo de 100 ítems recientes en la cola offline para rendimiento óptimo
+      if (this.syncQueue.length > 100) {
+        this.syncQueue = this.syncQueue.slice(this.syncQueue.length - 100);
+      }
       await AsyncStorage.setItem(STORAGE_KEYS.SYNC_QUEUE, JSON.stringify(this.syncQueue));
     } catch (err) {
-      console.error('[OfflineStorage] Error al guardar syncQueue:', err);
+      console.error('[OfflineStorage] Error al guardar syncQueue en AsyncStorage:', err);
     }
   }
 

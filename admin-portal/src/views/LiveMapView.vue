@@ -291,14 +291,17 @@ async function drawMap() {
       fillOpacity: 1,
     }).addTo(trackingsLayerGroup).bindPopup(`<b>Inicio de Jornada (${uName})</b><br>Hora: ${new Date(firstPoint.recorded_at).toLocaleTimeString()}`)
 
-    // Punto de Ubicación Actual / Fin de jornada (Azul en vivo)
-    L.circleMarker(lastCoord, {
-      radius: 10,
-      color: '#024ad8',
-      fillColor: '#024ad8',
-      fillOpacity: 1,
-      className: 'pulse-marker',
-    }).addTo(trackingsLayerGroup).bindPopup(`<b>${uName}</b><br>Ubicación actual en vivo<br>Hora: ${new Date(lastPoint.recorded_at).toLocaleTimeString()}`)
+    // Punto de Ubicación Actual / Fin de jornada (Pin Animado Azul con pulso en vivo)
+    const livePulseIcon = L.divIcon({
+      className: 'live-pulse-wrapper',
+      html: '<div class="pulse-beacon-ring"></div><div class="pulse-beacon-dot"></div>',
+      iconSize: [24, 24],
+      iconAnchor: [12, 12]
+    })
+
+    L.marker(lastCoord, { icon: livePulseIcon })
+      .addTo(trackingsLayerGroup)
+      .bindPopup(`<b>${uName}</b><br>Ubicación actual en vivo<br>Hora: ${new Date(lastPoint.recorded_at).toLocaleTimeString()}`)
   }
 
   // Dibujar Marcadores de Actividades / Asistencia registrados a lo largo de la ruta
@@ -409,13 +412,38 @@ onUnmounted(() => {
   border: 1px solid #fecaca;
 }
 
-:deep(.pulse-marker) {
-  animation: pulse-ring 1.5s infinite;
+:deep(.live-pulse-wrapper) {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-
-@keyframes pulse-ring {
-  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); }
-  70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+:deep(.pulse-beacon-dot) {
+  width: 14px;
+  height: 14px;
+  background-color: #024ad8;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 0 8px rgba(2, 74, 216, 0.8);
+  z-index: 2;
+}
+:deep(.pulse-beacon-ring) {
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: rgba(2, 74, 216, 0.45);
+  animation: beacon-pulse 1.8s ease-out infinite;
+  z-index: 1;
+}
+@keyframes beacon-pulse {
+  0% {
+    transform: scale(0.4);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
 }
 </style>

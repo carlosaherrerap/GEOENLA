@@ -33,7 +33,8 @@ const PORT = process.env.PORT || 8000;
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecretjwtkey';
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -70,6 +71,41 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString(),
     database: 'connected',
   });
+});
+
+// R2 Diagnostic Health Check
+app.get('/api/health/r2', async (req, res) => {
+  try {
+    const testFileName = `test_${Date.now()}.txt`;
+    const testContent = Buffer.from('Testing Cloudflare R2 Connection');
+    const publicUrl = await uploadToR2(testContent, testFileName, 'text/plain');
+    res.json({
+      status: 'ok',
+      message: 'Conexión a Cloudflare R2 exitosa.',
+      publicUrl,
+      r2Config: {
+        bucket: process.env.R2_BUCKET_NAME || 'goingup',
+        hasAccountId: !!process.env.R2_ACCOUNT_ID,
+        hasAccessKey: !!process.env.R2_ACCESS_KEY_ID,
+        hasSecretKey: !!process.env.R2_SECRET_ACCESS_KEY,
+        publicDomain: process.env.R2_PUBLIC_DOMAIN || '',
+      }
+    });
+  } catch (err: any) {
+    console.error('[R2 Health Diagnostic Failed]', err);
+    res.status(500).json({
+      status: 'error',
+      message: 'Fallo al conectar con Cloudflare R2.',
+      error: err.message,
+      r2Config: {
+        bucket: process.env.R2_BUCKET_NAME || 'goingup',
+        hasAccountId: !!process.env.R2_ACCOUNT_ID,
+        hasAccessKey: !!process.env.R2_ACCESS_KEY_ID,
+        hasSecretKey: !!process.env.R2_SECRET_ACCESS_KEY,
+        publicDomain: process.env.R2_PUBLIC_DOMAIN || '',
+      }
+    });
+  }
 });
 
 app.get('/api/ping', (req, res) => res.json({ pong: true }));
