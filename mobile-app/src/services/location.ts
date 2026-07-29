@@ -4,8 +4,8 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 
 const BACKGROUND_LOCATION_TASK = 'background-location-task';
-const MIN_DISTANCE_DELTA_METERS = 5; // Mínimo 5 metros para capturar caminata con alta fidelidad
-const MAX_ACCURACY_THRESHOLD_METERS = 20; // Máxima imprecisión permitida (descartar picos)
+const MIN_DISTANCE_DELTA_METERS = 3; // Mínimo 3 metros para capturar movimiento
+const MAX_ACCURACY_THRESHOLD_METERS = 40; // Ampliado a 40 metros para evitar descarte de coordenadas urbanas
 const DB_SAVE_INTERVAL_MS = 20000; // 20 segundos para guardar en base de datos
 
 export interface LocationCoords {
@@ -167,6 +167,8 @@ class LocationTrackingService {
     // 5. Enviar punto actual al servidor o guardarlo en SQLite si no hay internet
     try {
       await apiService.sendTrackingPoint(point);
+      // Enviar latido de presencia para mantener el estado ACTIVO en vivo
+      apiService.updateDeviceInfo({ battery_level: point.battery_level }).catch(() => {});
       console.log('[Tracking] Punto enviado en vivo a la plataforma.');
     } catch (err) {
       console.log('[Tracking] Sin conexión a internet. Guardando punto en SQLite...');

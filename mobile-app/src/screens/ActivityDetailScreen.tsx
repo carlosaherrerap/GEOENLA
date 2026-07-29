@@ -151,10 +151,15 @@ export const ActivityDetailScreen: React.FC<Props> = ({ activity, onBack }) => {
         mediaTypes: ['images'],
         quality: 0.7,
         allowsEditing: false,
+        base64: true,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        setPhotos([...photos, result.assets[0].uri]);
+        const asset = result.assets[0];
+        const formattedPhoto = asset.base64
+          ? `data:image/jpeg;base64,${asset.base64}`
+          : asset.uri;
+        setPhotos([...photos, formattedPhoto]);
       }
     } catch (err) {
       console.warn('[ActivityDetail] Fallback cámara:', err);
@@ -330,33 +335,15 @@ export const ActivityDetailScreen: React.FC<Props> = ({ activity, onBack }) => {
           />
         </ErrorBoundary>
 
-        {/* Action Button: EMPEZAR RUTA (desaparece tras marcar asistencia) */}
-        {!attendanceMarked && !activityCompleted && (
-          <View style={{ gap: 8 }}>
-            {!isHeadingToSede ? (
-              <TouchableOpacity style={styles.primaryPillButton} onPress={handleStartHeading}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Ionicons name="navigate-outline" size={18} color="#ffffff" />
-                  <Text style={styles.primaryPillText}>EMPEZAR RUTA</Text>
-                </View>
-              </TouchableOpacity>
-            ) : (
-              <View style={{ gap: 8 }}>
-                <View style={styles.activeTrackingBox}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                    <Ionicons name="radio" size={18} color="#3E6AE1" />
-                    <Text style={styles.activeTrackingText}>
-                      Transmitiendo trayecto en tiempo real
-                    </Text>
-                  </View>
-                </View>
-                <TouchableOpacity style={styles.cancelButton} onPress={handleCancelHeading}>
-                  <Text style={styles.cancelButtonText}>CANCELAR TRAYECTO</Text>
-                </TouchableOpacity>
-              </View>
-            )}
+        {/* Indicador de Transmisión Activa */}
+        <View style={styles.activeTrackingBox}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            <Ionicons name="radio" size={18} color="#3E6AE1" />
+            <Text style={styles.activeTrackingText}>
+              Geolocalización en Vivo (Gestión Principal)
+            </Text>
           </View>
-        )}
+        </View>
       </View>
 
       {/* Evidencias Section */}
@@ -377,7 +364,7 @@ export const ActivityDetailScreen: React.FC<Props> = ({ activity, onBack }) => {
               <View key={photo || index.toString()} style={styles.photoItem}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
                   <Ionicons name="image" size={16} color="#3E6AE1" />
-                  <Text style={styles.photoText} numberOfLines={1}>{photo}</Text>
+                  <Text style={styles.photoText} numberOfLines={1}>Evidencia #{index + 1} (Foto adjunta)</Text>
                 </View>
                 <TouchableOpacity onPress={() => handleRemovePhoto(index)}>
                   <Ionicons name="close-circle" size={20} color="#e53e3e" />

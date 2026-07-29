@@ -252,13 +252,31 @@ async function drawMap() {
   allCoords.push(...coords)
 
   if (coords.length > 0) {
-    // Dibujar línea continua de la jornada completa a partir del 2do punto
-    L.polyline(coords, {
+    // Dibujar línea básica inicial por resguardo
+    const mainPolyline = L.polyline(coords, {
       color: '#024ad8',
       weight: 4,
       opacity: 0.85,
       smoothFactor: 1.5,
-    }).addTo(trackingsLayerGroup)
+    }).addTo(trackingsLayerGroup);
+
+    // Intentar alinear el trayecto sobre aceras y calles usando OSRM Map-Matching si hay más de 1 punto
+    if (coords.length >= 2) {
+      const sampleTrackings = validTrackings.slice(0, 100);
+      const coordString = sampleTrackings.map(t => `${t.lng},${t.lat}`).join(';');
+      api.get(`/routes/osrm-match?coordinates=${coordString}`)
+        .then(({ data }) => {
+          if (data && data.matchings && data.matchings.length > 0) {
+            const matchedCoords = data.matchings.flatMap(m =>
+              m.geometry.coordinates.map(c => [c[1], c[0]])
+            );
+            if (matchedCoords.length > 0) {
+              mainPolyline.setLatLngs(matchedCoords);
+            }
+          }
+        })
+        .catch(err => console.warn('[OSRM Map-Matching Warning]', err.message));
+    }
 
     const lastCoord = coords[coords.length - 1]
     const lastPoint = validTrackings[validTrackings.length - 1]

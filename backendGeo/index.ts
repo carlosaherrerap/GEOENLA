@@ -262,10 +262,47 @@ protectedRoutes.get('/activities', async (req: any, res) => {
 protectedRoutes.get('/activities/:id', async (req, res) => {
   const activity = await prisma.activities.findUnique({
     where: { id: req.params.id },
-    include: { period: true, location: { include: { ubiety: true } }, evidence: true, attendances: true },
+    include: {
+      period: true,
+      location: { include: { ubiety: true } },
+      user: { include: { supervisor: true } },
+      activityUsers: { include: { user: { include: { supervisor: true } } } },
+      evidence: true,
+      attendances: { include: { user: { include: { supervisor: true } } } },
+    },
   });
   if (!activity) return res.status(404).json({ message: 'Not found' });
-  res.json(activity);
+
+  let userObj = activity.user;
+  if (!userObj && activity.id_user) {
+    const foundUser = await prisma.users.findFirst({
+      where: {
+        OR: [
+          { id: activity.id_user },
+          { id_supervisor: activity.id_user }
+        ]
+      },
+      include: { supervisor: true }
+    });
+    if (foundUser) {
+      userObj = foundUser;
+    } else {
+      const foundSupervisor = await prisma.supervisors.findUnique({
+        where: { id: activity.id_user }
+      });
+      if (foundSupervisor) {
+        userObj = {
+          id: foundSupervisor.id,
+          username: `${foundSupervisor.nombres} ${foundSupervisor.ape_pat}`,
+          correo: '',
+          rol: 'usuario',
+          supervisor: foundSupervisor
+        } as any;
+      }
+    }
+  }
+
+  res.json({ ...activity, user: userObj });
 });
 
 // Attendances
@@ -412,6 +449,13 @@ protectedRoutes.post('/trackings', async (req: any, res) => {
     recorded_at: recordedDate.toISOString(),
   });
 
+  // Update device_details last_seen_at for ACTIVO status
+  await prisma.device_details.upsert({
+    where: { id_user: req.user.id },
+    update: { last_seen_at: new Date() },
+    create: { id_user: req.user.id, last_seen_at: new Date() },
+  }).catch(() => {});
+
   res.status(201).json({
     message: 'Punto registrado.',
     tracking: { ...tracking, id: tracking.id.toString() },
@@ -534,6 +578,32 @@ protectedRoutes.get('/routes/osrm-foot', async (req: any, res) => {
   } catch (error: any) {
     console.error('[OSRM Proxy Error]', error.message);
     res.status(500).json({ message: 'Error consultando servicio de ruteo peatonal OSRM.', error: error.message });
+// Pedestrian Map Matching Endpoint using OSRM to snap raw GPS points onto sidewalks and streets
+protectedRoutes.get('/routes/osrm-match', async (req: any, res) => {
+  const { coordinates } = req.query; // format: "lng1,lat1;lng2,lat2;lng3,lat3"
+  if (!coordinates || typeof coordinates !== 'string') {
+    return res.status(400).json({ message: 'Parámetro coordinates requerido (lng1,lat1;lng2,lat2).' });
+  }
+
+  const osrmBaseUrl = process.env.OSRM_URL || 'https://router.project-osrm.org';
+  const osrmUrl = `${osrmBaseUrl}/match/v1/foot/${coordinates}?overview=full&geometries=geojson`;
+
+  try {
+    const response = await fetch(osrmUrl);
+    if (!response.ok) {
+      if (osrmBaseUrl !== 'https://router.project-osrm.org') {
+        const publicUrl = `https://router.project-osrm.org/match/v1/foot/${coordinates}?overview=full&geometries=geojson`;
+        const pubResponse = await fetch(publicUrl);
+        const pubData = await pubResponse.json();
+        return res.json(pubData);
+      }
+      throw new Error(`OSRM Match response status ${response.status}`);
+    }
+    const data = await response.json();
+    res.json(data);
+  } catch (error: any) {
+    console.error('[OSRM Match Error]', error.message);
+    res.status(500).json({ message: 'Error procesando map matching peatonal.', error: error.message });
   }
 });
 
@@ -736,13 +806,15 @@ protectedRoutes.get('/schedules', async (req, res) => {
   res.json({ data: schedules });
 });
 
-// Users simple list for dropdowns
+// Users simple list for dropdowns (solo usuarios de campo)
 protectedRoutes.get('/users/list', async (req, res) => {
   const users = await prisma.users.findMany({
+    where: { rol: 'usuario' },
     select: {
       id: true,
       username: true,
       correo: true,
+      rol: true,
       supervisor: { select: { nombres: true, ape_pat: true } }
     },
     orderBy: { username: 'asc' }

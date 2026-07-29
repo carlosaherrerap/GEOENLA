@@ -92,11 +92,11 @@ export const LeafletMapView: React.FC<Props> = ({ userLocation, sedeLocation, he
       <!DOCTYPE html>
       <html>
       <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
         <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
         <style>
-          html, body, #map { width: 100%; height: 100%; margin: 0; padding: 0; background: #e5e7eb; }
+          html, body, #map { width: 100%; height: 100%; margin: 0; padding: 0; background: #e5e7eb; touch-action: auto; }
           .user-dot {
             width: 16px; height: 16px; background: #3E6AE1; border: 3px solid #ffffff;
             border-radius: 50%; box-shadow: 0 0 10px rgba(62,106,225,0.6);
@@ -106,7 +106,7 @@ export const LeafletMapView: React.FC<Props> = ({ userLocation, sedeLocation, he
       <body>
         <div id="map"></div>
         <script>
-          const map = L.map('map', { zoomControl: false, attributionControl: false });
+          const map = L.map('map', { zoomControl: true, attributionControl: false, dragging: true, touchZoom: true, doubleClickZoom: true, scrollWheelZoom: true });
           
           L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19
@@ -192,7 +192,7 @@ export const LeafletMapView: React.FC<Props> = ({ userLocation, sedeLocation, he
         originWhitelist={['*']}
         source={{ html: generateHtml() }}
         style={styles.webview}
-        scrollEnabled={false}
+        scrollEnabled={true}
         javaScriptEnabled={true}
         domStorageEnabled={true}
       />

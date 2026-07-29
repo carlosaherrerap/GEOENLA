@@ -241,7 +241,7 @@ async function fetchDropdowns() {
     locations.value = locRes.data.data || []
     periods.value = perRes.data.data || []
     availableActivities.value = actRes.data.data || []
-    users.value = usrRes.data.data || []
+    users.value = (usrRes.data.data || []).filter(u => u.rol === 'usuario')
   } catch (err) {
     console.error('Error fetching dropdowns:', err)
   }
