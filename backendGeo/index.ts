@@ -578,6 +578,9 @@ protectedRoutes.get('/routes/osrm-foot', async (req: any, res) => {
   } catch (error: any) {
     console.error('[OSRM Proxy Error]', error.message);
     res.status(500).json({ message: 'Error consultando servicio de ruteo peatonal OSRM.', error: error.message });
+  }
+});
+
 // Pedestrian Map Matching Endpoint using OSRM to snap raw GPS points onto sidewalks and streets
 protectedRoutes.get('/routes/osrm-match', async (req: any, res) => {
   const { coordinates } = req.query; // format: "lng1,lat1;lng2,lat2;lng3,lat3"
