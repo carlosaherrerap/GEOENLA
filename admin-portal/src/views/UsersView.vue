@@ -61,7 +61,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="user in users" :key="user.id">
+          <tr v-for="user in filteredUsers" :key="user.id">
             <td style="font-weight: 600; color: var(--text-heading);">
               {{ user.supervisor ? `${user.supervisor.nombres} ${user.supervisor.ape_pat}` : user.username }}
             </td>
@@ -91,7 +91,7 @@
               </div>
             </td>
           </tr>
-          <tr v-if="users.length === 0">
+          <tr v-if="filteredUsers.length === 0">
             <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 40px;">
               No se encontraron usuarios registrados.
             </td>
@@ -308,7 +308,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import api from '../services/api'
 
 const users = ref([])
@@ -317,6 +317,27 @@ const loading = ref(true)
 const search = ref('')
 const filterEstado = ref('')
 const filterRol = ref('')
+
+const filteredUsers = computed(() => {
+  let list = users.value
+  if (filterEstado.value) {
+    list = list.filter(u => u.estado === filterEstado.value)
+  }
+  if (filterRol.value) {
+    list = list.filter(u => u.rol === filterRol.value)
+  }
+  if (search.value && search.value.trim()) {
+    const q = search.value.toLowerCase().trim()
+    list = list.filter(u => {
+      const uname = (u.username || '').toLowerCase()
+      const mail = (u.correo || '').toLowerCase()
+      const sName = u.supervisor ? `${u.supervisor.nombres} ${u.supervisor.ape_pat} ${u.supervisor.ape_mat}`.toLowerCase() : ''
+      const doc = u.supervisor?.doc ? String(u.supervisor.doc).toLowerCase() : ''
+      return uname.includes(q) || mail.includes(q) || sName.includes(q) || doc.includes(q)
+    })
+  }
+  return list
+})
 
 function isUserActive(u) {
   if (!u) return false

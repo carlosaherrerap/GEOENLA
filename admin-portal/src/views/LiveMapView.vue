@@ -9,13 +9,31 @@
 
     <!-- Filters -->
     <div class="filters-bar">
+      <div class="form-group" style="flex: 1.5;">
+        <label class="form-label">Buscar Usuario</label>
+        <div style="position: relative;">
+          <input
+            v-model="userSearchQuery"
+            type="text"
+            class="form-input"
+            placeholder="🔍 Nombre, usuario, correo o DNI..."
+          />
+        </div>
+      </div>
       <div class="form-group" style="flex: 2;">
         <label class="form-label">Seleccionar Usuario *</label>
         <select v-model="selectedUser" class="form-select" @change="onUserChange">
           <option value="">-- Selecciona un usuario para ver su trayecto --</option>
-          <option v-for="u in users" :key="u.id" :value="u.id">
-            {{ u.username }}
-          </option>
+          <optgroup label="🟢 USUARIOS ACTIVOS (SESIÓN ACTIVA)" v-if="activeUsers.length > 0">
+            <option v-for="u in activeUsers" :key="u.id" :value="u.id">
+              🟢 {{ u.username }} {{ u.supervisor ? `(${u.supervisor.nombres} ${u.supervisor.ape_pat})` : '' }}
+            </option>
+          </optgroup>
+          <optgroup label="🔴 USUARIOS INACTIVOS (SIN SESIÓN)" v-if="inactiveUsers.length > 0">
+            <option v-for="u in inactiveUsers" :key="u.id" :value="u.id">
+              🔴 {{ u.username }} {{ u.supervisor ? `(${u.supervisor.nombres} ${u.supervisor.ape_pat})` : '' }}
+            </option>
+          </optgroup>
         </select>
       </div>
       <div class="form-group" style="flex: 1;">
@@ -35,10 +53,10 @@
     </div>
 
     <!-- Compact Badges -->
-    <div class="badges-row" v-else-if="trackings.length > 0">
-      <div :class="['chip-badge', selectedUserActive ? 'chip-success' : 'chip-danger']">
-        <i class="ph ph-user"></i>
-        <span><strong>Estado App:</strong> {{ selectedUserActive ? 'ACTIVO' : 'INACTIVO' }}</span>
+    <div class="badges-row" v-else-if="selectedUserObj">
+      <div :class="['chip-badge', selectedUserActive ? 'chip-success' : 'chip-danger']" style="display: inline-flex; align-items: center; gap: 8px;">
+        <span :class="['semaforo-dot', selectedUserActive ? 'semaforo-online' : 'semaforo-offline']"></span>
+        <span><strong>Estado App:</strong> {{ selectedUserActive ? 'SESIÓN ACTIVA (EN LÍNEA)' : 'SIN SESIÓN (DESCONECTADO)' }}</span>
       </div>
       <div class="chip-badge chip-primary">
         <i class="ph ph-navigation-arrow"></i>
@@ -46,7 +64,7 @@
       </div>
       <div class="chip-badge chip-info">
         <i class="ph ph-clock"></i>
-        <span><strong>Primer Registro (Inicio):</strong> {{ firstTime }}</span>
+        <span><strong>Primer Registro:</strong> {{ firstTime }}</span>
       </div>
       <div class="chip-badge chip-success">
         <i class="ph ph-clock-afternoon"></i>
@@ -125,6 +143,7 @@ const activities = ref([])
 const attendances = ref([])
 const trackings = ref([])
 const selectedUser = ref('')
+const userSearchQuery = ref('')
 const selectedDate = ref(new Date().toISOString().split('T')[0])
 const activeAttendanceModal = ref(null)
 const hasFittedUserBounds = ref(false)
@@ -132,6 +151,26 @@ let pollInterval = null
 
 let map = null
 let trackingsLayerGroup = null
+
+const filteredUsers = computed(() => {
+  if (!userSearchQuery.value.trim()) return users.value
+  const q = userSearchQuery.value.toLowerCase().trim()
+  return users.value.filter(u => {
+    const uname = (u.username || '').toLowerCase()
+    const mail = (u.correo || '').toLowerCase()
+    const superName = u.supervisor ? `${u.supervisor.nombres} ${u.supervisor.ape_pat} ${u.supervisor.ape_mat}`.toLowerCase() : ''
+    const doc = u.supervisor?.doc ? String(u.supervisor.doc).toLowerCase() : ''
+    return uname.includes(q) || mail.includes(q) || superName.includes(q) || doc.includes(q)
+  })
+})
+
+const activeUsers = computed(() => {
+  return filteredUsers.value.filter(u => isUserActive(u))
+})
+
+const inactiveUsers = computed(() => {
+  return filteredUsers.value.filter(u => !isUserActive(u))
+})
 
 const selectedUserObj = computed(() => {
   return users.value.find(u => u.id === selectedUser.value)
@@ -170,11 +209,11 @@ function onUserChange() {
 
 async function fetchUsers() {
   try {
-    const { data } = await api.get('/users', { params: { per_page: 100, rol: 'usuario' } })
+    const { data } = await api.get('/users/all')
     const allUsers = data.data || []
-    users.value = allUsers.filter(u => u.rol === 'usuario')
+    users.value = allUsers.filter(u => u.rol === 'usuario' || !u.rol || u.rol === 'admin')
   } catch (err) {
-    console.error('Error:', err)
+    console.error('Error fetching users:', err)
   }
 }
 
@@ -410,6 +449,31 @@ onUnmounted(() => {
   background-color: #fef2f2;
   color: #dc2626;
   border: 1px solid #fecaca;
+}
+
+.semaforo-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.semaforo-online {
+  background-color: #22c55e;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.8);
+  animation: semaforo-pulse 2s infinite;
+}
+
+.semaforo-offline {
+  background-color: #ef4444;
+  box-shadow: 0 0 4px rgba(239, 68, 68, 0.4);
+}
+
+@keyframes semaforo-pulse {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+  70% { transform: scale(1.1); box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
 }
 
 :deep(.live-pulse-wrapper) {

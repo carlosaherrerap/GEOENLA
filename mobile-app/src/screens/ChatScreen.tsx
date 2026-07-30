@@ -162,6 +162,54 @@ export const ChatScreen: React.FC = () => {
     }
   };
 
+  const isUserActive = (user: any): boolean => {
+    if (!user) return false;
+    if (user.estado === 'bloqueado') return false;
+    const lastSeen = user.deviceDetail?.last_seen_at || user.last_seen_at;
+    if (!lastSeen) return false;
+    const diffMs = Date.now() - new Date(lastSeen).getTime();
+    return diffMs < 10 * 60 * 1000;
+  };
+
+  const processedChats = React.useMemo(() => {
+    let list = [...chats];
+
+    // Ordenar conversaciones por mensaje más reciente (más reciente arriba)
+    list.sort((a, b) => {
+      const timeA = a.talks && a.talks.length > 0 ? new Date(a.talks[0].fec_envio).getTime() : (a.last_update_chat ? new Date(a.last_update_chat).getTime() : 0);
+      const timeB = b.talks && b.talks.length > 0 ? new Date(b.talks[0].fec_envio).getTime() : (b.last_update_chat ? new Date(b.last_update_chat).getTime() : 0);
+      return timeB - timeA;
+    });
+
+    // Buscar chat con el usuario Administrador
+    const adminChatIndex = list.findIndex((c) => {
+      const partner = c.user1?.id === myUserId ? c.user2 : c.user1 || c.user2;
+      return partner?.rol === 'admin';
+    });
+
+    if (adminChatIndex > -1) {
+      const [adminChat] = list.splice(adminChatIndex, 1);
+      return [{ ...adminChat, isPinned: true }, ...list];
+    }
+
+    // Si no existe conversación iniciada con el Admin, anclar opción con usuario Admin disponible
+    const adminUser = allUsers.find((u) => u.rol === 'admin');
+    if (adminUser) {
+      const dummyAdminChat: any = {
+        id: `admin-pinned-${adminUser.id}`,
+        isPinned: true,
+        isSynthetic: true,
+        user1: { id: myUserId, username: '', correo: '', rol: 'usuario', estado: 'activo' },
+        user2: adminUser,
+        talks: [],
+        last_update_chat: null,
+      };
+      return [dummyAdminChat, ...list];
+    }
+
+    return list;
+  }, [chats, allUsers, myUserId]);
+
   const filteredUsers = allUsers.filter(
     (u) =>
       u.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -189,23 +237,35 @@ export const ChatScreen: React.FC = () => {
         <ActivityIndicator size="large" color="#3E6AE1" style={{ marginTop: 60 }} />
       ) : (
         <FlatList
-          data={chats}
+          data={processedChats}
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
           renderItem={({ item }) => {
             const partner = item.user1?.id === myUserId ? item.user2 : item.user1 || item.user2;
-            const lastMsg = item.talks && item.talks.length > 0 ? item.talks[0].texto : 'Sin mensajes';
+            const lastMsg = item.talks && item.talks.length > 0 ? item.talks[0].texto : (item.isPinned ? 'Toca para hablar con el administrador' : 'Sin mensajes');
+            const activeStatus = isUserActive(partner);
 
             return (
-              <TouchableOpacity style={styles.chatCard} onPress={() => handleOpenChat(item)}>
-                <View style={styles.avatarCircle}>
-                  <Ionicons name="person" size={22} color="#3E6AE1" />
+              <TouchableOpacity
+                style={[styles.chatCard, item.isPinned && styles.pinnedChatCard]}
+                onPress={() => item.isSynthetic ? handleStartChatWithUser(partner) : handleOpenChat(item)}
+              >
+                <View style={{ position: 'relative' }}>
+                  <View style={styles.avatarCircle}>
+                    <Ionicons name={partner?.rol === 'admin' ? 'shield-checkmark' : 'person'} size={22} color={partner?.rol === 'admin' ? '#059669' : '#3E6AE1'} />
+                  </View>
+                  <View style={[styles.semaforoDotOverlay, activeStatus ? styles.semaforoDotOnline : styles.semaforoDotOffline]} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Text style={styles.partnerName}>{partner?.username || 'Usuario'}</Text>
-                    <View style={styles.roleBadge}>
-                      <Text style={styles.roleText}>{partner?.rol || 'usuario'}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      {item.isPinned && <Text style={{ fontSize: 12 }}>📌</Text>}
+                      <Text style={styles.partnerName}>{partner?.username || 'Administrador'}</Text>
+                    </View>
+                    <View style={[styles.roleBadge, partner?.rol === 'admin' && styles.adminRoleBadge]}>
+                      <Text style={[styles.roleText, partner?.rol === 'admin' && styles.adminRoleText]}>
+                        {item.isPinned ? 'ADMIN (ANCLADO)' : (partner?.rol || 'usuario')}
+                      </Text>
                     </View>
                   </View>
                   <Text style={styles.lastMsgText} numberOfLines={1}>
@@ -252,15 +312,18 @@ export const ChatScreen: React.FC = () => {
               <TouchableOpacity style={styles.userCard} onPress={() => handleStartChatWithUser(item)}>
                 <View style={{ position: 'relative' }}>
                   <View style={styles.avatarCircle}>
-                    <Ionicons name="person" size={20} color="#3E6AE1" />
+                    <Ionicons name={item.rol === 'admin' ? 'shield-checkmark' : 'person'} size={20} color={item.rol === 'admin' ? '#059669' : '#3E6AE1'} />
                   </View>
+                  <View style={[styles.semaforoDotOverlay, isUserActive(item) ? styles.semaforoDotOnline : styles.semaforoDotOffline]} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.userNameText}>{item.username}</Text>
                   <Text style={styles.userEmailText}>{item.correo}</Text>
                 </View>
-                <View style={styles.statusPill}>
-                  <Text style={styles.statusPillText}>{item.rol}</Text>
+                <View style={[styles.statusPill, isUserActive(item) ? styles.statusPillOnline : styles.statusPillOffline]}>
+                  <Text style={[styles.statusPillText, isUserActive(item) ? styles.statusPillTextOnline : styles.statusPillTextOffline]}>
+                    {isUserActive(item) ? '🟢 ACTIVO' : '🔴 INACTIVO'}
+                  </Text>
                 </View>
               </TouchableOpacity>
             )}
@@ -477,17 +540,54 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#5C5E62',
   },
+  pinnedChatCard: {
+    backgroundColor: '#F0FDF4',
+    borderColor: '#A7F3D0',
+    borderWidth: 1.5,
+  },
+  adminRoleBadge: {
+    backgroundColor: '#D1FAE5',
+  },
+  adminRoleText: {
+    color: '#059669',
+  },
+  semaforoDotOverlay: {
+    position: 'absolute',
+    bottom: -1,
+    right: -1,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  semaforoDotOnline: {
+    backgroundColor: '#22C55E',
+  },
+  semaforoDotOffline: {
+    backgroundColor: '#EF4444',
+  },
   statusPill: {
-    backgroundColor: '#EEF2FF',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
   },
+  statusPillOnline: {
+    backgroundColor: '#DCFCE7',
+  },
+  statusPillOffline: {
+    backgroundColor: '#FEE2E2',
+  },
   statusPillText: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#3E6AE1',
     textTransform: 'uppercase',
+  },
+  statusPillTextOnline: {
+    color: '#15803D',
+  },
+  statusPillTextOffline: {
+    color: '#B91C1C',
   },
   chatDetailHeader: {
     flexDirection: 'row',

@@ -147,6 +147,13 @@ app.post('/api/login', async (req, res) => {
       { expiresIn: '7d' }
     );
 
+    // Actualizar o registrar device_details con last_seen_at para sesión ACTIVA al iniciar sesión
+    await prisma.device_details.upsert({
+      where: { id_user: user.id },
+      update: { last_seen_at: new Date() },
+      create: { id_user: user.id, last_seen_at: new Date() },
+    }).catch(() => {});
+
     res.json({
       message: 'Login exitoso.',
       user: { id: user.id, username: user.username, correo: user.correo, rol: user.rol, estado: user.estado },
@@ -170,7 +177,13 @@ protectedRoutes.get('/me', async (req: any, res) => {
   res.json({ user });
 });
 
-protectedRoutes.post('/logout', (req, res) => {
+protectedRoutes.post('/logout', async (req: any, res) => {
+  if (req.user?.id) {
+    await prisma.device_details.updateMany({
+      where: { id_user: req.user.id },
+      data: { last_seen_at: null },
+    }).catch(() => {});
+  }
   res.json({ message: 'Sesión cerrada exitosamente.' });
 });
 
@@ -707,13 +720,9 @@ protectedRoutes.get('/users/all', async (req: any, res) => {
   try {
     const users = await prisma.users.findMany({
       where: { id: { not: req.user.id } },
-      select: {
-        id: true,
-        username: true,
-        correo: true,
-        rol: true,
-        estado: true,
-        created_at: true,
+      include: {
+        deviceDetail: true,
+        supervisor: { select: { nombres: true, ape_pat: true, ape_mat: true, doc: true } },
       },
       orderBy: { username: 'asc' },
     });
@@ -731,8 +740,8 @@ protectedRoutes.get('/chats', async (req: any, res) => {
         OR: [{ id_user_1: currentUserId }, { id_user_2: currentUserId }],
       },
       include: {
-        user1: { select: { id: true, username: true, correo: true, rol: true, estado: true } },
-        user2: { select: { id: true, username: true, correo: true, rol: true, estado: true } },
+        user1: { select: { id: true, username: true, correo: true, rol: true, estado: true, deviceDetail: true } },
+        user2: { select: { id: true, username: true, correo: true, rol: true, estado: true, deviceDetail: true } },
         talks: { orderBy: { fec_envio: 'desc' }, take: 1 },
       },
       orderBy: { last_update_chat: 'desc' },
@@ -894,12 +903,36 @@ const adminRoutes = express.Router();
 adminRoutes.use(adminMiddleware);
 
 adminRoutes.get('/users', async (req, res) => {
-  const users = await prisma.users.findMany({
-    include: { supervisor: { include: { location: true, schedule: true, ubiety: true } }, deviceDetail: true },
-    orderBy: { created_at: 'desc' },
-    take: 50,
-  });
-  res.json({ data: users });
+  try {
+    const { search, estado, rol, per_page } = req.query as any;
+    const where: any = {};
+
+    if (estado) where.estado = estado;
+    if (rol) where.rol = rol;
+    if (search) {
+      const s = String(search).trim();
+      where.OR = [
+        { username: { contains: s, mode: 'insensitive' } },
+        { correo: { contains: s, mode: 'insensitive' } },
+        { supervisor: { nombres: { contains: s, mode: 'insensitive' } } },
+        { supervisor: { ape_pat: { contains: s, mode: 'insensitive' } } },
+        { supervisor: { ape_mat: { contains: s, mode: 'insensitive' } } },
+        { supervisor: { doc: { contains: s, mode: 'insensitive' } } },
+      ];
+    }
+
+    const takeParam = per_page ? Number(per_page) : (search || rol || estado ? undefined : 200);
+
+    const users = await prisma.users.findMany({
+      where,
+      include: { supervisor: { include: { location: true, schedule: true, ubiety: true } }, deviceDetail: true },
+      orderBy: { created_at: 'desc' },
+      ...(takeParam ? { take: takeParam } : {}),
+    });
+    res.json({ data: users });
+  } catch (err) {
+    res.status(500).json({ message: 'Error cargando usuarios' });
+  }
 });
 
 adminRoutes.get('/users/:id', async (req, res) => {

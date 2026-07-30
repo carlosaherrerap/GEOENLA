@@ -20,19 +20,23 @@
           :class="{ active: selectedUser?.id === user.id }"
           @click="selectUser(user)"
         >
-          <div class="user-avatar">
+          <div class="user-avatar" style="position: relative;">
             <i class="ph ph-user"></i>
+            <span :class="['semaforo-dot-overlay', isUserActive(user) ? 'semaforo-online' : 'semaforo-offline']"></span>
           </div>
           <div class="user-info">
             <div class="user-name-row">
               <span class="user-name">
                 {{ user.username }}
               </span>
-              <span class="badge" :class="isUserActive(user) ? 'badge-success' : 'badge-danger'">
+              <span class="badge" :class="isUserActive(user) ? 'badge-success' : 'badge-danger'" style="display: inline-flex; align-items: center; gap: 4px;">
+                <span :class="['semaforo-dot-sm', isUserActive(user) ? 'semaforo-online' : 'semaforo-offline']"></span>
                 {{ isUserActive(user) ? 'ACTIVO' : 'INACTIVO' }}
               </span>
             </div>
-            <div class="user-email">{{ user.correo }}</div>
+            <div class="user-email" style="text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
+              {{ chatsMap[user.id]?.lastText ? `💬 ${chatsMap[user.id].lastText}` : user.correo }}
+            </div>
           </div>
         </div>
       </div>
@@ -41,9 +45,22 @@
     <!-- Active Chat Window -->
     <div class="chat-main" v-if="selectedUser">
       <div class="chat-main-header">
-        <div class="header-info">
-          <h4>{{ selectedUser.username }}</h4>
-          <span>{{ selectedUser.correo }} &bull; {{ selectedUser.rol }} ({{ isUserActive(selectedUser) ? 'ACTIVO' : 'INACTIVO' }})</span>
+        <div class="header-info" style="display: flex; align-items: center; gap: 12px;">
+          <div style="position: relative;">
+            <div class="user-avatar" style="width: 40px; height: 40px; font-size: 1.2rem;">
+              <i class="ph ph-user"></i>
+            </div>
+            <span :class="['semaforo-dot-overlay', isUserActive(selectedUser) ? 'semaforo-online' : 'semaforo-offline']" style="width: 14px; height: 14px;"></span>
+          </div>
+          <div>
+            <h4 style="margin: 0; font-size: 1.1rem; color: var(--text-heading);">{{ selectedUser.username }}</h4>
+            <span style="font-size: 0.85rem; color: var(--text-muted); display: inline-flex; align-items: center; gap: 6px; margin-top: 2px;">
+              {{ selectedUser.correo }} &bull; {{ selectedUser.rol }}
+              <span :class="['badge', isUserActive(selectedUser) ? 'badge-success' : 'badge-danger']" style="padding: 2px 8px; font-size: 0.75rem;">
+                {{ isUserActive(selectedUser) ? 'SESIÓN ACTIVA (EN LÍNEA)' : 'SIN SESIÓN (DESCONECTADO)' }}
+              </span>
+            </span>
+          </div>
         </div>
       </div>
 
@@ -102,6 +119,7 @@ import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import api from '../services/api'
 
 const users = ref([])
+const chatsMap = ref({})
 const searchQuery = ref('')
 const selectedUser = ref(null)
 const activeChatId = ref(null)
@@ -131,16 +149,41 @@ const currentAdminId = computed(() => {
 
 const filteredUsers = computed(() => {
   return users.value.filter(u =>
-    u.username.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-    u.correo.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-    u.rol.toLowerCase().includes(searchQuery.value.toLowerCase())
+    (u.username || '').toLowerCase().includes(searchQuery.value.toLowerCase()) ||
+    (u.correo || '').toLowerCase().includes(searchQuery.value.toLowerCase()) ||
+    (u.rol || '').toLowerCase().includes(searchQuery.value.toLowerCase())
   )
 })
 
 async function fetchUsers() {
   try {
-    const res = await api.get('/users/all')
-    users.value = res.data?.data || []
+    const [usersRes, chatsRes] = await Promise.all([
+      api.get('/users/all'),
+      api.get('/chats').catch(() => ({ data: { data: [] } }))
+    ])
+
+    const allUsers = usersRes.data?.data || []
+    const chats = chatsRes.data?.data || []
+
+    const map = {}
+    chats.forEach(c => {
+      const partnerId = c.id_user_1 === currentAdminId.value ? c.id_user_2 : c.id_user_1
+      const lastTime = c.talks && c.talks.length > 0 ? new Date(c.talks[0].fec_envio).getTime() : (c.last_update_chat ? new Date(c.last_update_chat).getTime() : 0)
+      const lastText = c.talks && c.talks.length > 0 ? c.talks[0].texto : ''
+      map[partnerId] = { lastTime, lastText, chatId: c.id }
+      const partnerIdAlt = c.id_user_2 === currentAdminId.value ? c.id_user_1 : c.id_user_2
+      map[partnerIdAlt] = { lastTime, lastText, chatId: c.id }
+    })
+    chatsMap.value = map
+
+    // Ordenar usuarios por mensaje más reciente (más reciente arriba)
+    allUsers.sort((a, b) => {
+      const timeA = map[a.id]?.lastTime || 0
+      const timeB = map[b.id]?.lastTime || 0
+      return timeB - timeA
+    })
+
+    users.value = allUsers
   } catch (err) {
     console.error('Error cargando usuarios para chat:', err)
   }
@@ -404,4 +447,33 @@ onUnmounted(() => {
   color: var(--text-muted);
   margin-top: 40px;
 }
+
+.semaforo-dot-overlay {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+}
+
+.semaforo-dot-sm {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.semaforo-online {
+  background-color: #22c55e;
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.8);
+}
+
+.semaforo-offline {
+  background-color: #ef4444;
+  box-shadow: 0 0 4px rgba(239, 68, 68, 0.4);
+}
+
 </style>
