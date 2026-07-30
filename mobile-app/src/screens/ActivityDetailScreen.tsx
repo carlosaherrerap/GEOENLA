@@ -194,10 +194,10 @@ export const ActivityDetailScreen: React.FC<Props> = ({ activity, onBack }) => {
     try {
       await apiService.checkInJson({
         id_activity: activity.id,
-        id_location: activity.location?.id,
+        id_location: activity.location?.id || activity.id_location || '',
         lat: currentLat,
         lng: currentLng,
-        observacion: commentText || 'Asistencia marcada en la sede (≤25m).',
+        observacion: commentText || (isFreeLocation ? 'Asistencia marcada en ubicación libre (sin sede).' : 'Asistencia marcada en la sede (≤25m).'),
         photos,
         is_final: false,
       });

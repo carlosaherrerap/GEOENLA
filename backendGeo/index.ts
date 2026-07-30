@@ -378,29 +378,74 @@ protectedRoutes.post('/attendances/check-in', async (req: any, res) => {
       locationObj = await prisma.locations.findUnique({ where: { id: targetLocationId }, include: { ubiety: true } });
     }
 
-    if (!locationObj || !locationObj.ubiety) {
+    if (!locationObj) {
       const activityObj = await prisma.activities.findUnique({ where: { id: id_activity }, include: { location: { include: { ubiety: true } } } });
-      if (activityObj && activityObj.location && activityObj.location.ubiety) {
+      if (activityObj && activityObj.location) {
         targetLocationId = activityObj.location.id;
         locationObj = activityObj.location;
       }
     }
 
-    const sedeLat = locationObj?.ubiety?.latitud ? Number(locationObj.ubiety.latitud) : Number(lat || -12.0464);
-    const sedeLng = locationObj?.ubiety?.longitud ? Number(locationObj.ubiety.longitud) : Number(lng || -77.0428);
-    const currentLat = Number(lat || sedeLat);
-    const currentLng = Number(lng || sedeLng);
-    const distance = haversineDistance(currentLat, currentLng, sedeLat, sedeLng);
+    // Garantizar sede válida para actividades Sin Sede o libres (evita error de FK loc_default)
+    if (!targetLocationId || !locationObj) {
+      let defaultLoc = await prisma.locations.findFirst({
+        where: {
+          OR: [
+            { nombre: { contains: 'Sin Sede', mode: 'insensitive' } },
+            { nombre: { contains: 'libre', mode: 'insensitive' } }
+          ]
+        },
+        include: { ubiety: true }
+      });
+
+      if (!defaultLoc) {
+        const ubiety = await prisma.ubieties.create({
+          data: {
+            latitud: 0,
+            longitud: 0,
+            nombre: 'Sin Sede'
+          }
+        });
+        defaultLoc = await prisma.locations.create({
+          data: {
+            id_ubiety: ubiety.id,
+            nombre: 'Sin Sede (Ubicación Libre)',
+            sede_reg: 'LIMA',
+            sede_juris: 'LIMA'
+          },
+          include: { ubiety: true }
+        });
+      }
+
+      targetLocationId = defaultLoc.id;
+      locationObj = defaultLoc;
+    }
+
+    const sedeLat = locationObj?.ubiety?.latitud ? Number(locationObj.ubiety.latitud) : Number(lat || 0);
+    const sedeLng = locationObj?.ubiety?.longitud ? Number(locationObj.ubiety.longitud) : Number(lng || 0);
+    const rawLat = Number(lat ?? sedeLat);
+    const rawLng = Number(lng ?? sedeLng);
+
+    // Truncar latitud/longitud a máximo 7 decimales para evitar el error Decimal(10,7) numeric field overflow
+    const currentLat = isNaN(rawLat) ? 0 : Number(rawLat.toFixed(7));
+    const currentLng = isNaN(rawLng) ? 0 : Number(rawLng.toFixed(7));
+
+    let distVal = 0;
+    if (sedeLat !== 0 && sedeLng !== 0 && currentLat !== 0 && currentLng !== 0) {
+      const calc = haversineDistance(currentLat, currentLng, sedeLat, sedeLng);
+      distVal = isNaN(calc) || !isFinite(calc) ? 0 : Math.min(Math.max(0, calc), 99999.99);
+    }
+    const safeDistance = Number(distVal.toFixed(2));
 
     const isFreeLocation =
       locationObj?.nombre?.toLowerCase().includes('sin sede') ||
       locationObj?.nombre?.toLowerCase().includes('libre') ||
       (sedeLat === 0 && sedeLng === 0);
 
-    if (!isFreeLocation && distance > 25.0) {
+    if (!isFreeLocation && safeDistance > 25.0) {
       return res.status(422).json({
-        message: `Te encuentras a ${distance.toFixed(1)}m. Debes estar a 25 metros o menos de la sede para marcar asistencia.`,
-        distance_m: Number(distance.toFixed(2)),
+        message: `Te encuentras a ${safeDistance.toFixed(1)}m. Debes estar a 25 metros o menos de la sede para marcar asistencia.`,
+        distance_m: safeDistance,
         sede_coords: { lat: sedeLat, lng: sedeLng },
       });
     }
@@ -415,13 +460,14 @@ protectedRoutes.post('/attendances/check-in', async (req: any, res) => {
         message: 'Para actividades sin sede fija es obligatorio tomar y adjuntar al menos una foto de evidencia.',
       });
     }
+
     const uploadedPhotoUrls: string[] = [];
 
     for (let i = 0; i < rawPhotos.length; i++) {
       const item = rawPhotos[i];
       if (item && (item.startsWith('data:image') || item.length > 500)) {
         try {
-          const r2Url = await uploadToR2(item, `attendance_${req.user.id}_${i}.jpg`);
+          const r2Url = await uploadToR2(item, `attendance_${req.user.id}_${Date.now()}_${i}.jpg`);
           uploadedPhotoUrls.push(r2Url);
         } catch (uploadErr) {
           console.error('[CheckIn R2 Upload Error]', uploadErr);
@@ -436,16 +482,27 @@ protectedRoutes.post('/attendances/check-in', async (req: any, res) => {
       data: {
         id_user: req.user.id,
         id_activity,
-        id_location: targetLocationId || 'loc_default',
+        id_location: targetLocationId,
         lat: currentLat,
         lng: currentLng,
-        distance_m: Number(distance.toFixed(2)),
+        distance_m: safeDistance,
         photos: uploadedPhotoUrls,
-        observacion: observacion || 'Asistencia marcada desde la app.',
+        observacion: observacion || (isFreeLocation ? 'Asistencia en ubicación libre (sin sede).' : 'Asistencia marcada desde la app.'),
         checked_in_at: new Date(),
         estado: newStatus,
       },
     });
+
+    // Guardar también en la tabla evidencia (evidencias) para que figure disponible en la plataforma
+    for (const photoUrl of uploadedPhotoUrls) {
+      await prisma.evidence.create({
+        data: {
+          id_activity,
+          descripcion: observacion || (isFreeLocation ? 'Evidencia de Marcación Libre (Sin Sede)' : 'Evidencia de Asistencia'),
+          url: photoUrl
+        }
+      }).catch((evErr) => console.warn('[CheckIn] Error creando evidencia:', evErr));
+    }
 
     // Actualizar estado de la actividad en la base de datos
     await prisma.activities.update({
