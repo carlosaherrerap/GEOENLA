@@ -40,9 +40,14 @@
         <label class="form-label">Fecha de Jornada</label>
         <input v-model="selectedDate" type="date" class="form-input" @change="fetchTrackings" />
       </div>
-      <button class="btn btn-primary" @click="fetchTrackings" style="margin-top: auto;">
-        <i class="ph ph-arrows-clockwise"></i> Actualizar
-      </button>
+      <div style="margin-top: auto; display: flex; gap: 8px;">
+        <button class="btn btn-primary" @click="fetchTrackings">
+          <i class="ph ph-arrows-clockwise"></i> Actualizar
+        </button>
+        <button class="btn" @click="exportUsersToExcel" style="background-color: #059669; color: white; border: none; display: inline-flex; align-items: center; gap: 6px; font-weight: 600;">
+          <i class="ph ph-file-xls" style="font-size: 1.2rem;"></i> Exportar Excel
+        </button>
+      </div>
     </div>
 
     <!-- Mensaje cuando no hay usuario seleccionado -->
@@ -52,7 +57,7 @@
       <p style="color: var(--text-muted); font-size: 0.875rem;">Para mantener el mapa organizado, debes seleccionar un usuario para desplegar su ruta completa de jornada y puntos de actividad.</p>
     </div>
 
-    <!-- Información de Sede Asignada y Usuario -->
+    <!-- Información de Sede Asignada y Ubicación Real en Tiempo Real -->
     <div class="card" v-if="selectedUserObj" style="margin-top: 16px; padding: 16px 20px; background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: var(--radius-lg);">
       <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
         <div style="display: flex; align-items: center; gap: 12px;">
@@ -64,24 +69,24 @@
               {{ selectedUserObj.supervisor ? `${selectedUserObj.supervisor.nombres} ${selectedUserObj.supervisor.ape_pat} ${selectedUserObj.supervisor.ape_mat || ''}` : selectedUserObj.username }}
             </h3>
             <p style="margin: 2px 0 0 0; font-size: 0.85rem; color: var(--text-muted); font-family: var(--font-mono);">
-              @{{ selectedUserObj.username }} &bull; DNI / Doc: {{ selectedUserObj.supervisor?.doc || '-' }}
+              @{{ selectedUserObj.username }} &bull; DNI / Doc: {{ selectedUserObj.supervisor?.doc || '-' }} &bull; Sede: {{ selectedUserObj.supervisor?.location?.nombre || 'General' }}
             </p>
           </div>
         </div>
 
-        <!-- Información de Sede (tabla: sedes) -->
+        <!-- Ubicación en Tiempo Real del Usuario (Departamento, Provincia, Distrito) -->
         <div style="display: flex; gap: 20px; flex-wrap: wrap; background: var(--bg-subtle); padding: 10px 16px; border-radius: var(--radius); border: 1px solid var(--border-subtle);">
           <div>
-            <span style="font-size: 0.7rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block;">SEDE REG (DEPARTAMENTO)</span>
-            <strong style="font-size: 0.9rem; color: var(--text-heading);">{{ selectedUserObj.supervisor?.location?.sede_reg || 'N/A' }}</strong>
+            <p style="margin: 0; font-size: 0.7rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">SEDE REGIONAL:</p>
+            <strong style="font-size: 0.9rem; color: var(--text-heading);">{{ realTimeLocation.department || selectedUserObj.supervisor?.location?.sede_reg || 'LIMA' }}</strong>
           </div>
           <div style="border-left: 1px solid var(--border-subtle); padding-left: 16px;">
-            <span style="font-size: 0.7rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block;">SEDE JURIS (PROVINCIA)</span>
-            <strong style="font-size: 0.9rem; color: var(--text-heading);">{{ selectedUserObj.supervisor?.location?.sede_juris || 'N/A' }}</strong>
+            <p style="margin: 0; font-size: 0.7rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">SEDE JURIS:</p>
+            <strong style="font-size: 0.9rem; color: var(--text-heading);">{{ realTimeLocation.province || selectedUserObj.supervisor?.location?.sede_juris || 'LIMA' }}</strong>
           </div>
           <div style="border-left: 1px solid var(--border-subtle); padding-left: 16px;">
-            <span style="font-size: 0.7rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block;">NOMBRE DE SEDE</span>
-            <strong style="font-size: 0.9rem; color: var(--primary);">{{ selectedUserObj.supervisor?.location?.nombre || 'Sin Sede Asignada' }}</strong>
+            <p style="margin: 0; font-size: 0.7rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">DISTRITO:</p>
+            <strong style="font-size: 0.9rem; color: var(--primary);">{{ realTimeLocation.district || 'CARGANDO...' }}</strong>
           </div>
         </div>
       </div>
@@ -171,6 +176,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
+import * as XLSX from 'xlsx'
 import api from '../services/api'
 
 const users = ref([])
@@ -245,6 +251,60 @@ function isUserActive(u) {
   return diffMs < 10 * 60 * 1000
 }
 
+function exportUsersToExcel() {
+  // Ordenar: primero los usuarios con sesión activa, luego inactivos
+  const sortedUsers = [...users.value].sort((a, b) => {
+    const actA = isUserActive(a) ? 0 : 1
+    const actB = isUserActive(b) ? 0 : 1
+    return actA - actB
+  })
+
+  const exportData = sortedUsers.map(u => {
+    const active = isUserActive(u)
+    return {
+      'Estado Sesión App': active ? 'ACTIVO (SESION ACTIVA)' : 'INACTIVO (SIN SESION)',
+      'Usuario': u.username || '',
+      'Correo Electrónico': u.correo || '',
+      'Nombres': u.supervisor?.nombres || '-',
+      'Apellido Paterno': u.supervisor?.ape_pat || '-',
+      'Apellido Materno': u.supervisor?.ape_mat || '-',
+      'DNI / Documento': u.supervisor?.doc || '-',
+      'Rol': u.rol || 'usuario',
+      'Estado Sistema': u.estado || 'activo',
+      'Nombre de Sede': u.supervisor?.location?.nombre || '-',
+      'Sede Regional (Departamento)': u.supervisor?.location?.sede_reg || '-',
+      'Sede Jurisdicción (Provincia)': u.supervisor?.location?.sede_juris || '-',
+      'Última Sesión': (u.deviceDetail?.last_seen_at || u.last_seen_at)
+        ? new Date(u.deviceDetail?.last_seen_at || u.last_seen_at).toLocaleString()
+        : 'Sin registro'
+    }
+  })
+
+  const worksheet = XLSX.utils.json_to_sheet(exportData)
+
+  worksheet['!cols'] = [
+    { wch: 25 }, // Estado Sesión App
+    { wch: 18 }, // Usuario
+    { wch: 25 }, // Correo
+    { wch: 20 }, // Nombres
+    { wch: 20 }, // Apellido Paterno
+    { wch: 20 }, // Apellido Materno
+    { wch: 16 }, // DNI
+    { wch: 12 }, // Rol
+    { wch: 15 }, // Estado Sistema
+    { wch: 25 }, // Nombre Sede
+    { wch: 28 }, // Sede Reg
+    { wch: 28 }, // Sede Juris
+    { wch: 22 }  // Última Sesión
+  ]
+
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Usuarios Activos e Inactivos')
+
+  const dateStr = new Date().toISOString().split('T')[0]
+  XLSX.writeFile(workbook, `reporte_usuarios_activos_inactivos_${dateStr}.xlsx`)
+}
+
 function onUserChange() {
   hasFittedUserBounds.value = false
   fetchTrackings()
@@ -282,6 +342,41 @@ async function fetchAttendances() {
   }
 }
 
+const realTimeLocation = ref({
+  department: '',
+  province: '',
+  district: ''
+})
+
+const geocodeCache = new Map()
+
+async function updateRealTimeLocation(lat, lng) {
+  if (!lat || !lng) return
+  const cacheKey = `${Number(lat).toFixed(3)},${Number(lng).toFixed(3)}`
+  if (geocodeCache.has(cacheKey)) {
+    realTimeLocation.value = geocodeCache.get(cacheKey)
+    return
+  }
+
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`, {
+      headers: { 'Accept-Language': 'es' }
+    })
+    const data = await res.json()
+    const addr = data.address || {}
+
+    const department = (addr.state || addr.region || addr.province || selectedUserObj.value?.supervisor?.location?.sede_reg || 'LIMA').toUpperCase()
+    const province = (addr.province || addr.county || addr.city || addr.city_district || selectedUserObj.value?.supervisor?.location?.sede_juris || 'LIMA').toUpperCase()
+    const district = (addr.suburb || addr.district || addr.city_district || addr.town || addr.village || addr.neighbourhood || 'LIMA').toUpperCase()
+
+    const locData = { department, province, district }
+    geocodeCache.set(cacheKey, locData)
+    realTimeLocation.value = locData
+  } catch (err) {
+    console.warn('[ReverseGeocode Warning]', err)
+  }
+}
+
 async function fetchTrackings() {
   if (!selectedUser.value) {
     trackings.value = []
@@ -311,6 +406,17 @@ async function fetchTrackings() {
       const localDateStr = `${y}-${m}-${d}`
       return localDateStr === selectedDate.value
     })
+
+    const lastPt = trackings.value[trackings.value.length - 1]
+    if (lastPt) {
+      updateRealTimeLocation(lastPt.lat, lastPt.lng)
+    } else if (selectedUserObj.value?.supervisor?.location) {
+      realTimeLocation.value = {
+        department: (selectedUserObj.value.supervisor.location.sede_reg || 'LIMA').toUpperCase(),
+        province: (selectedUserObj.value.supervisor.location.sede_juris || 'LIMA').toUpperCase(),
+        district: (selectedUserObj.value.supervisor.location.nombre || 'LIMA').toUpperCase()
+      }
+    }
 
     await nextTick()
     drawMap()

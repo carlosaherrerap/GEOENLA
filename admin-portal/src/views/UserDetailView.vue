@@ -43,6 +43,27 @@
         </div>
       </div>
 
+      <!-- Ubicación Actual en Tiempo Real del Usuario (Departamento, Provincia, Distrito) -->
+      <div class="card" style="margin-bottom: 24px; padding: 16px 20px; background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: var(--radius-lg);">
+        <h3 style="margin: 0 0 12px 0; font-size: 1rem; font-weight: 700; color: var(--text-heading); display: flex; align-items: center; gap: 8px;">
+          <i class="ph ph-map-pin-line" style="color: var(--primary);"></i> Ubicación Actual en Tiempo Real
+        </h3>
+        <div style="display: flex; gap: 20px; flex-wrap: wrap; background: var(--bg-subtle); padding: 12px 18px; border-radius: var(--radius); border: 1px solid var(--border-subtle);">
+          <div>
+            <p style="margin: 0; font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">SEDE REGIONAL:</p>
+            <strong style="font-size: 0.95rem; color: var(--text-heading);">{{ realTimeLocation.department || user.supervisor?.location?.sede_reg || 'LIMA' }}</strong>
+          </div>
+          <div style="border-left: 1px solid var(--border-subtle); padding-left: 20px;">
+            <p style="margin: 0; font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">SEDE JURIS:</p>
+            <strong style="font-size: 0.95rem; color: var(--text-heading);">{{ realTimeLocation.province || user.supervisor?.location?.sede_juris || 'LIMA' }}</strong>
+          </div>
+          <div style="border-left: 1px solid var(--border-subtle); padding-left: 20px;">
+            <p style="margin: 0; font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">DISTRITO:</p>
+            <strong style="font-size: 0.95rem; color: var(--primary);">{{ realTimeLocation.district || 'CARGANDO...' }}</strong>
+          </div>
+        </div>
+      </div>
+
       <!-- Recorrido en el Mapa -->
       <div class="card" style="margin-bottom: 24px;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
@@ -161,9 +182,22 @@ const attendances = ref([])
 const trackings = ref([])
 const activities = ref([])
 const loading = ref(true)
-const trackingDate = ref(new Date().toISOString().split('T')[0])
 
-let map = null
+function getTodayLocalDate() {
+  const d = new Date()
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const trackingDate = ref(getTodayLocalDate())
+
+const realTimeLocation = ref({
+  department: '',
+  province: '',
+  district: ''
+})
 
 function getActivityName(activityId) {
   const found = activities.value.find(a => a.id === activityId)
@@ -200,12 +234,60 @@ async function fetchAttendances() {
   }
 }
 
+onMounted(() => {
+  fetchUser()
+  fetchActivities()
+  fetchAttendances()
+  fetchTrackings()
+})
+
+const geocodeCache = new Map()
+
+async function updateRealTimeLocation(lat, lng) {
+  if (!lat || !lng) return
+  const cacheKey = `${Number(lat).toFixed(3)},${Number(lng).toFixed(3)}`
+  if (geocodeCache.has(cacheKey)) {
+    realTimeLocation.value = geocodeCache.get(cacheKey)
+    return
+  }
+
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`, {
+      headers: { 'Accept-Language': 'es' }
+    })
+    const data = await res.json()
+    const addr = data.address || {}
+
+    const department = (addr.state || addr.region || addr.province || user.value?.supervisor?.location?.sede_reg || 'LIMA').toUpperCase()
+    const province = (addr.province || addr.county || addr.city || addr.city_district || user.value?.supervisor?.location?.sede_juris || 'LIMA').toUpperCase()
+    const district = (addr.suburb || addr.district || addr.city_district || addr.town || addr.village || addr.neighbourhood || 'LIMA').toUpperCase()
+
+    const locData = { department, province, district }
+    geocodeCache.set(cacheKey, locData)
+    realTimeLocation.value = locData
+  } catch (err) {
+    console.warn('[ReverseGeocode Warning]', err)
+  }
+}
+
 async function fetchTrackings() {
   try {
     const { data } = await api.get('/trackings', {
       params: { id_user: props.id, fecha: trackingDate.value }
     })
     trackings.value = data.data || []
+
+    const lastPt = trackings.value[trackings.value.length - 1]
+    if (lastPt) {
+      updateRealTimeLocation(lastPt.lat, lastPt.lng)
+    } else if (user.value?.supervisor?.location) {
+      realTimeLocation.value = {
+        department: (user.value.supervisor.location.sede_reg || 'LIMA').toUpperCase(),
+        province: (user.value.supervisor.location.sede_juris || 'LIMA').toUpperCase(),
+        district: (user.value.supervisor.location.nombre || 'LIMA').toUpperCase()
+      }
+    }
+
     await nextTick()
     drawMap()
   } catch (err) {
