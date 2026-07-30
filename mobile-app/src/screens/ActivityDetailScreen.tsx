@@ -103,7 +103,15 @@ export const ActivityDetailScreen: React.FC<Props> = ({ activity, onBack }) => {
     };
   }, [sedeLat, sedeLng, hasNotifiedProximity, attendanceMarked]);
 
-  const isAtSede = distanceMeters !== null && distanceMeters <= 20.0;
+  const isFreeLocation =
+    !activity.location ||
+    activity.location.nombre?.toLowerCase().includes('sin sede') ||
+    activity.location.nombre?.toLowerCase().includes('libre') ||
+    (activity.location as any)?.es_libre === true ||
+    (sedeLat === 0 && sedeLng === 0);
+
+  const isAtSede = isFreeLocation || (distanceMeters !== null && distanceMeters <= 25.0);
+  const canTakePhoto = isFreeLocation || isAtSede || attendanceMarked;
 
   const handleStartHeading = () => {
     locationTracking.setCurrentActivity(activity.id);
@@ -387,7 +395,11 @@ export const ActivityDetailScreen: React.FC<Props> = ({ activity, onBack }) => {
 
       {/* Main Action Flow Button (MARCAR ASISTENCIA / FINALIZAR ACTIVIDAD) */}
       <View style={{ marginBottom: 20 }}>
-        {distanceMeters !== null && (
+        {isFreeLocation ? (
+          <Text style={styles.distanceInfo}>
+            Ubicación: <Text style={{ fontWeight: '700', color: '#059669' }}>Sin Sede (Ubicación Libre Habilitada)</Text>
+          </Text>
+        ) : distanceMeters !== null && (
           <Text style={styles.distanceInfo}>
             Distancia a la sede: <Text style={{ fontWeight: '700', color: '#171A20' }}>{distanceMeters.toFixed(1)} metros</Text>
           </Text>

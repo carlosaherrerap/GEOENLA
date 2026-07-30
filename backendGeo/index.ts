@@ -392,7 +392,12 @@ protectedRoutes.post('/attendances/check-in', async (req: any, res) => {
     const currentLng = Number(lng || sedeLng);
     const distance = haversineDistance(currentLat, currentLng, sedeLat, sedeLng);
 
-    if (distance > 25.0) {
+    const isFreeLocation =
+      locationObj?.nombre?.toLowerCase().includes('sin sede') ||
+      locationObj?.nombre?.toLowerCase().includes('libre') ||
+      (sedeLat === 0 && sedeLng === 0);
+
+    if (!isFreeLocation && distance > 25.0) {
       return res.status(422).json({
         message: `Te encuentras a ${distance.toFixed(1)}m. Debes estar a 25 metros o menos de la sede para marcar asistencia.`,
         distance_m: Number(distance.toFixed(2)),
@@ -404,6 +409,12 @@ protectedRoutes.post('/attendances/check-in', async (req: any, res) => {
 
     // Subir fotos a Cloudflare R2 si vienen en base64
     const rawPhotos = Array.isArray(photos) ? photos : typeof photos === 'string' ? [photos] : [];
+
+    if (isFreeLocation && rawPhotos.length === 0) {
+      return res.status(400).json({
+        message: 'Para actividades sin sede fija es obligatorio tomar y adjuntar al menos una foto de evidencia.',
+      });
+    }
     const uploadedPhotoUrls: string[] = [];
 
     for (let i = 0; i < rawPhotos.length; i++) {

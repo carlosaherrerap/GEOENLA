@@ -189,9 +189,20 @@
         </div>
         <form @submit.prevent="submitLocation">
           <div style="padding: 24px;">
+            <!-- Opción: Sin Sede (Ubicación Libre) -->
+            <div style="margin-bottom: 16px; background: var(--bg-subtle); padding: 12px 14px; border-radius: var(--radius); border: 1px solid var(--border-subtle);">
+              <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 700; color: var(--primary); font-size: 0.9rem;">
+                <input type="checkbox" v-model="newLocationIsFree" @change="onToggleFreeLocation" style="width: 18px; height: 18px; cursor: pointer;" />
+                <span>Sin Sede (Ubicación Libre en cualquier parte y momento)</span>
+              </label>
+              <span style="display: block; font-size: 0.78rem; color: var(--text-muted); margin-top: 4px; padding-left: 28px;">
+                Habilita al usuario para marcar asistencia libre desde cualquier ubicación (requiere foto obligatoria).
+              </span>
+            </div>
+
             <div class="form-group">
               <label class="form-label">Nombre de la Sede *</label>
-              <input v-model="newLocation.nombre" class="form-input" placeholder="Ej: Sede Principal Miraflores" required />
+              <input v-model="newLocation.nombre" class="form-input" placeholder="Ej: Sede Principal Miraflores o Sin Sede Libre" required />
             </div>
 
             <div class="grid-2">
@@ -416,7 +427,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import api from '../services/api'
 
 const activities = ref([])
@@ -446,6 +457,8 @@ const newActivity = ref({
   id_user: '',
 })
 
+const newLocationIsFree = ref(false)
+
 const newLocation = ref({
   nombre: '',
   sede_reg: 'LIMA',
@@ -453,6 +466,14 @@ const newLocation = ref({
   latitud: -12.046374,
   longitud: -77.042793,
 })
+
+function onToggleFreeLocation() {
+  if (newLocationIsFree.value) {
+    newLocation.value.nombre = 'Sin Sede (Ubicación Libre)'
+    newLocation.value.latitud = 0
+    newLocation.value.longitud = 0
+  }
+}
 
 const newPeriod = ref({
   nombre: '',
@@ -592,9 +613,16 @@ async function createActivity() {
 async function submitLocation() {
   savingLocation.value = true
   try {
-    const { data } = await api.post('/locations', newLocation.value)
-    alert('Sede creada exitosamente.')
+    const payload = { ...newLocation.value }
+    if (newLocationIsFree.value) {
+      payload.nombre = payload.nombre || 'Sin Sede (Ubicación Libre)'
+      payload.latitud = 0
+      payload.longitud = 0
+    }
+    const { data } = await api.post('/locations', payload)
+    alert(newLocationIsFree.value ? 'Opción Sin Sede creada exitosamente.' : 'Sede creada exitosamente.')
     showLocationModal.value = false
+    newLocationIsFree.value = false
     await fetchDropdownData()
     if (data.location?.id) {
       newActivity.value.id_location = data.location.id
