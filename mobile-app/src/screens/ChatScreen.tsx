@@ -259,7 +259,7 @@ export const ChatScreen: React.FC = () => {
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      {item.isPinned && <Text style={{ fontSize: 12 }}>📌</Text>}
+                      {item.isPinned && <Ionicons name="pin" size={14} color="#059669" />}
                       <Text style={styles.partnerName}>{partner?.username || 'Administrador'}</Text>
                     </View>
                     <View style={[styles.roleBadge, partner?.rol === 'admin' && styles.adminRoleBadge]}>
@@ -322,7 +322,7 @@ export const ChatScreen: React.FC = () => {
                 </View>
                 <View style={[styles.statusPill, isUserActive(item) ? styles.statusPillOnline : styles.statusPillOffline]}>
                   <Text style={[styles.statusPillText, isUserActive(item) ? styles.statusPillTextOnline : styles.statusPillTextOffline]}>
-                    {isUserActive(item) ? '🟢 ACTIVO' : '🔴 INACTIVO'}
+                    {isUserActive(item) ? 'ACTIVO' : 'INACTIVO'}
                   </Text>
                 </View>
               </TouchableOpacity>

@@ -12,30 +12,77 @@
         />
       </div>
 
-      <div class="users-list">
-        <div
-          v-for="user in filteredUsers"
-          :key="user.id"
-          class="user-item"
-          :class="{ active: selectedUser?.id === user.id }"
-          @click="selectUser(user)"
-        >
-          <div class="user-avatar" style="position: relative;">
-            <i class="ph ph-user"></i>
-            <span :class="['semaforo-dot-overlay', isUserActive(user) ? 'semaforo-online' : 'semaforo-offline']"></span>
+      <div class="sidebar-sections-wrapper">
+        <!-- SECCIÓN ACTIVOS (50% ALTURA) -->
+        <div class="sidebar-section active-section">
+          <div class="section-header">
+            <span class="semaforo-dot-sm semaforo-online"></span>
+            <span class="section-title">ACTIVOS ({{ activeUsers.length }})</span>
           </div>
-          <div class="user-info">
-            <div class="user-name-row">
-              <span class="user-name">
-                {{ user.username }}
-              </span>
-              <span class="badge" :class="isUserActive(user) ? 'badge-success' : 'badge-danger'" style="display: inline-flex; align-items: center; gap: 4px;">
-                <span :class="['semaforo-dot-sm', isUserActive(user) ? 'semaforo-online' : 'semaforo-offline']"></span>
-                {{ isUserActive(user) ? 'ACTIVO' : 'INACTIVO' }}
-              </span>
+          <div class="section-scroll">
+            <div
+              v-for="user in activeUsers"
+              :key="user.id"
+              class="user-item"
+              :class="{ active: selectedUser?.id === user.id }"
+              @click="selectUser(user)"
+            >
+              <div class="user-avatar" style="position: relative;">
+                <i class="ph ph-user"></i>
+                <span class="semaforo-dot-overlay semaforo-online"></span>
+              </div>
+              <div class="user-info">
+                <div class="user-name-row">
+                  <span class="user-name">{{ user.username }}</span>
+                  <span class="badge badge-success" style="display: inline-flex; align-items: center; gap: 4px;">
+                    <span class="semaforo-dot-sm semaforo-online"></span>
+                    ACTIVO
+                  </span>
+                </div>
+                <div class="user-email" style="text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
+                  {{ chatsMap[user.id]?.lastText ? chatsMap[user.id].lastText : user.correo }}
+                </div>
+              </div>
             </div>
-            <div class="user-email" style="text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
-              {{ chatsMap[user.id]?.lastText ? `💬 ${chatsMap[user.id].lastText}` : user.correo }}
+            <div v-if="activeUsers.length === 0" class="empty-section-text">
+              Sin usuarios activos
+            </div>
+          </div>
+        </div>
+
+        <!-- SECCIÓN INACTIVOS (50% ALTURA) -->
+        <div class="sidebar-section inactive-section">
+          <div class="section-header">
+            <span class="semaforo-dot-sm semaforo-offline"></span>
+            <span class="section-title">INACTIVOS ({{ inactiveUsers.length }})</span>
+          </div>
+          <div class="section-scroll">
+            <div
+              v-for="user in inactiveUsers"
+              :key="user.id"
+              class="user-item"
+              :class="{ active: selectedUser?.id === user.id }"
+              @click="selectUser(user)"
+            >
+              <div class="user-avatar" style="position: relative;">
+                <i class="ph ph-user"></i>
+                <span class="semaforo-dot-overlay semaforo-offline"></span>
+              </div>
+              <div class="user-info">
+                <div class="user-name-row">
+                  <span class="user-name">{{ user.username }}</span>
+                  <span class="badge badge-danger" style="display: inline-flex; align-items: center; gap: 4px;">
+                    <span class="semaforo-dot-sm semaforo-offline"></span>
+                    INACTIVO
+                  </span>
+                </div>
+                <div class="user-email" style="text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
+                  {{ chatsMap[user.id]?.lastText ? chatsMap[user.id].lastText : user.correo }}
+                </div>
+              </div>
+            </div>
+            <div v-if="inactiveUsers.length === 0" class="empty-section-text">
+              Sin usuarios inactivos
             </div>
           </div>
         </div>
@@ -153,6 +200,14 @@ const filteredUsers = computed(() => {
     (u.correo || '').toLowerCase().includes(searchQuery.value.toLowerCase()) ||
     (u.rol || '').toLowerCase().includes(searchQuery.value.toLowerCase())
   )
+})
+
+const activeUsers = computed(() => {
+  return filteredUsers.value.filter(u => isUserActive(u))
+})
+
+const inactiveUsers = computed(() => {
+  return filteredUsers.value.filter(u => !isUserActive(u))
 })
 
 async function fetchUsers() {
@@ -474,6 +529,54 @@ onUnmounted(() => {
 .semaforo-offline {
   background-color: #ef4444;
   box-shadow: 0 0 4px rgba(239, 68, 68, 0.4);
+}
+
+.sidebar-sections-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: calc(100% - 70px);
+  overflow: hidden;
+}
+
+.sidebar-section {
+  height: 50%;
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.sidebar-section:last-child {
+  border-bottom: none;
+}
+
+.section-header {
+  padding: 8px 14px;
+  background: var(--bg-subtle, #f8fafc);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-heading);
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.section-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.empty-section-text {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 16px;
+  font-style: italic;
 }
 
 </style>

@@ -462,12 +462,19 @@ protectedRoutes.get('/attendances', async (req: any, res) => {
   } else if (req.query.id_user) {
     where.id_user = req.query.id_user;
   }
+  if (req.query.fecha) {
+    const dStr = String(req.query.fecha).trim();
+    where.checked_in_at = {
+      gte: new Date(`${dStr}T00:00:00.000Z`),
+      lte: new Date(`${dStr}T23:59:59.999Z`),
+    };
+  }
 
   const attendances = await prisma.attendances.findMany({
     where,
     include: { activity: true, location: true },
     orderBy: { checked_in_at: 'desc' },
-    take: 20,
+    ...(req.query.fecha || req.query.id_user ? {} : { take: 100 }),
   });
   res.json({ data: attendances });
 });
@@ -618,6 +625,14 @@ protectedRoutes.get('/trackings', async (req: any, res) => {
   else if (req.query.id_user) where.id_user = req.query.id_user;
   if (req.query.id_activity) where.id_activity = req.query.id_activity;
 
+  if (req.query.fecha) {
+    const dStr = String(req.query.fecha).trim();
+    where.recorded_at = {
+      gte: new Date(`${dStr}T00:00:00.000Z`),
+      lte: new Date(`${dStr}T23:59:59.999Z`),
+    };
+  }
+
   const trackings = await prisma.trackings.findMany({
     where,
     select: { id: true, id_user: true, id_activity: true, lat: true, lng: true, accuracy: true, speed: true, recorded_at: true },
@@ -662,28 +677,39 @@ protectedRoutes.get('/routes/osrm-foot', async (req: any, res) => {
 protectedRoutes.get('/routes/osrm-match', async (req: any, res) => {
   const { coordinates } = req.query; // format: "lng1,lat1;lng2,lat2;lng3,lat3"
   if (!coordinates || typeof coordinates !== 'string') {
-    return res.status(400).json({ message: 'Parámetro coordinates requerido (lng1,lat1;lng2,lat2).' });
+    return res.json({ matchings: [] });
+  }
+
+  // Limitar cantidad de puntos de coordenadas para evitar URLs gigantes que fallen en OSRM
+  const coordArray = coordinates.split(';');
+  let finalCoords = coordinates;
+  if (coordArray.length > 40) {
+    const step = Math.ceil(coordArray.length / 40);
+    const sampled = coordArray.filter((_, idx) => idx % step === 0);
+    finalCoords = sampled.join(';');
   }
 
   const osrmBaseUrl = process.env.OSRM_URL || 'https://router.project-osrm.org';
-  const osrmUrl = `${osrmBaseUrl}/match/v1/foot/${coordinates}?overview=full&geometries=geojson`;
+  const osrmUrl = `${osrmBaseUrl}/match/v1/foot/${finalCoords}?overview=full&geometries=geojson`;
 
   try {
     const response = await fetch(osrmUrl);
     if (!response.ok) {
       if (osrmBaseUrl !== 'https://router.project-osrm.org') {
-        const publicUrl = `https://router.project-osrm.org/match/v1/foot/${coordinates}?overview=full&geometries=geojson`;
-        const pubResponse = await fetch(publicUrl);
-        const pubData = await pubResponse.json();
-        return res.json(pubData);
+        const publicUrl = `https://router.project-osrm.org/match/v1/foot/${finalCoords}?overview=full&geometries=geojson`;
+        const pubResponse = await fetch(publicUrl).catch(() => null);
+        if (pubResponse && pubResponse.ok) {
+          const pubData = await pubResponse.json();
+          return res.json(pubData);
+        }
       }
-      throw new Error(`OSRM Match response status ${response.status}`);
+      return res.json({ matchings: [] });
     }
     const data = await response.json();
     res.json(data);
   } catch (error: any) {
-    console.error('[OSRM Match Error]', error.message);
-    res.status(500).json({ message: 'Error procesando map matching peatonal.', error: error.message });
+    console.warn('[OSRM Match Warning]', error.message);
+    res.json({ matchings: [] });
   }
 });
 

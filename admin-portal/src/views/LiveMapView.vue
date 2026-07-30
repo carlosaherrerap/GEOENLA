@@ -16,7 +16,7 @@
             v-model="userSearchQuery"
             type="text"
             class="form-input"
-            placeholder="🔍 Nombre, usuario, correo o DNI..."
+            placeholder="Nombre, usuario, correo o DNI..."
           />
         </div>
       </div>
@@ -24,14 +24,14 @@
         <label class="form-label">Seleccionar Usuario *</label>
         <select v-model="selectedUser" class="form-select" @change="onUserChange">
           <option value="">-- Selecciona un usuario para ver su trayecto --</option>
-          <optgroup label="🟢 USUARIOS ACTIVOS (SESIÓN ACTIVA)" v-if="activeUsers.length > 0">
+          <optgroup label="USUARIOS ACTIVOS (SESIÓN ACTIVA)" v-if="activeUsers.length > 0">
             <option v-for="u in activeUsers" :key="u.id" :value="u.id">
-              🟢 {{ u.username }} {{ u.supervisor ? `(${u.supervisor.nombres} ${u.supervisor.ape_pat})` : '' }}
+              [ACTIVO] {{ u.username }} {{ u.supervisor ? `(${u.supervisor.nombres} ${u.supervisor.ape_pat})` : '' }}
             </option>
           </optgroup>
-          <optgroup label="🔴 USUARIOS INACTIVOS (SIN SESIÓN)" v-if="inactiveUsers.length > 0">
+          <optgroup label="USUARIOS INACTIVOS (SIN SESIÓN)" v-if="inactiveUsers.length > 0">
             <option v-for="u in inactiveUsers" :key="u.id" :value="u.id">
-              🔴 {{ u.username }} {{ u.supervisor ? `(${u.supervisor.nombres} ${u.supervisor.ape_pat})` : '' }}
+              [INACTIVO] {{ u.username }} {{ u.supervisor ? `(${u.supervisor.nombres} ${u.supervisor.ape_pat})` : '' }}
             </option>
           </optgroup>
         </select>
@@ -228,7 +228,10 @@ async function fetchActivities() {
 
 async function fetchAttendances() {
   try {
-    const { data } = await api.get('/attendances')
+    const params = {}
+    if (selectedDate.value) params.fecha = selectedDate.value
+    if (selectedUser.value) params.id_user = selectedUser.value
+    const { data } = await api.get('/attendances', { params })
     attendances.value = data.data || []
   } catch (err) {
     console.error('Error attendances:', err)
@@ -301,7 +304,8 @@ async function drawMap() {
 
     // Intentar alinear el trayecto sobre aceras y calles usando OSRM Map-Matching si hay más de 1 punto
     if (coords.length >= 2) {
-      const sampleTrackings = validTrackings.slice(0, 100);
+      const step = Math.max(1, Math.ceil(validTrackings.length / 30));
+      const sampleTrackings = validTrackings.filter((_, idx) => idx % step === 0);
       const coordString = sampleTrackings.map(t => `${t.lng},${t.lat}`).join(';');
       api.get(`/routes/osrm-match?coordinates=${coordString}`)
         .then(({ data }) => {
