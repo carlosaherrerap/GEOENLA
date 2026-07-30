@@ -12,6 +12,7 @@ import { ProfileScreen } from './src/screens/ProfileScreen';
 import { ErrorLogsScreen } from './src/screens/ErrorLogsScreen';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { locationTracking } from './src/services/location';
+import { offlineStorage } from './src/services/storage';
 
 type TabState = 'activities' | 'chat' | 'profile';
 type ViewState = 'main' | 'activity_detail' | 'device_info' | 'error_logs';
@@ -25,11 +26,19 @@ function MainAppContent() {
   const [selectedActivity, setSelectedActivity] = useState<any>(null);
 
   useEffect(() => {
-    // Configurar modo inmersivo sin barra nativa en Android (Samsung y todos los modelos)
+    // Cargar caché local tras montar la interfaz de React
+    offlineStorage.loadFromStorage().catch(() => {});
+
+    // Configurar ocultamiento de barra nativa en Android de forma segura
     if (Platform.OS === 'android') {
-      NavigationBar.setVisibilityAsync('hidden').catch(() => {});
-      NavigationBar.setBehaviorAsync('overlay-swipe').catch(() => {});
-      NavigationBar.setBackgroundColorAsync('transparent').catch(() => {});
+      const timer = setTimeout(() => {
+        try {
+          NavigationBar.setVisibilityAsync('hidden').catch(() => {});
+        } catch (_err) {
+          // Ignorar si no está disponible
+        }
+      }, 300);
+      return () => clearTimeout(timer);
     }
   }, []);
 
@@ -156,7 +165,9 @@ function MainAppContent() {
 export default function App() {
   return (
     <SafeAreaProvider>
-      <MainAppContent />
+      <ErrorBoundary fallbackText="Ocurrió un problema de interfaz al iniciar la pantalla de inicio.">
+        <MainAppContent />
+      </ErrorBoundary>
     </SafeAreaProvider>
   );
 }

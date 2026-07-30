@@ -1096,12 +1096,6 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 8,
   },
-  routeFilterLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#374151',
-    marginBottom: 4,
-  },
   dropdownSelectorBtn: {
     flexDirection: 'row',
     alignItems: 'center',

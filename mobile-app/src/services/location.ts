@@ -168,7 +168,7 @@ class LocationTrackingService {
     try {
       await apiService.sendTrackingPoint(point);
       // Enviar latido de presencia para mantener el estado ACTIVO en vivo
-      apiService.updateDeviceInfo({ battery_level: point.battery_level }).catch(() => {});
+      apiService.updateDeviceInfo({ battery_level: point.battery_level ?? 90 }).catch(() => {});
       console.log('[Tracking] Punto enviado en vivo a la plataforma.');
     } catch (err) {
       console.log('[Tracking] Sin conexión a internet. Guardando punto en SQLite...');
@@ -194,9 +194,13 @@ class LocationTrackingService {
 export const locationTracking = new LocationTrackingService();
 
 TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
-  if (error || !data) return;
-  const { locations } = data as any;
-  if (locations && locations.length > 0) {
-    await locationTracking.processLocationUpdate(locations[0]);
+  try {
+    if (error || !data) return;
+    const { locations } = data as any;
+    if (locations && locations.length > 0) {
+      await locationTracking.processLocationUpdate(locations[0]);
+    }
+  } catch (err) {
+    console.error('[BackgroundLocationTask] Error al procesar ubicación:', err);
   }
 });

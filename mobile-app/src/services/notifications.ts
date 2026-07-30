@@ -3,13 +3,19 @@ import { Audio } from 'expo-av';
 import { Platform, Vibration } from 'react-native';
 
 // Configure notification behavior when app is in foreground and background
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+try {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
+  });
+} catch (_err) {
+  console.warn('[Notifications] Error initializing handler:', _err);
+}
 
 let isAudioSetup = false;
 

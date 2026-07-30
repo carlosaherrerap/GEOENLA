@@ -45,7 +45,20 @@ class OfflineStorageService {
   private isLoaded = false;
 
   constructor() {
-    this.loadFromStorage();
+    // Inicialización perezosa (lazy) para evitar promesas sueltas en el arranque del bundle JS
+  }
+
+  public async clearAllAppStorage(): Promise<void> {
+    try {
+      const keys = Object.values(STORAGE_KEYS);
+      await AsyncStorage.multiRemove(keys);
+      this.trackingQueue = [];
+      this.syncQueue = [];
+      this.activitiesCache = [];
+      console.log('[OfflineStorage] Almacenamiento local limpiado completamente.');
+    } catch (err) {
+      console.error('[OfflineStorage] Error al limpiar almacenamiento:', err);
+    }
   }
 
   public async loadFromStorage(): Promise<void> {

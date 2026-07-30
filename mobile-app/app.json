@@ -9,6 +9,11 @@
     "assetBundlePatterns": [
       "**/*"
     ],
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFFFF"
+    },
     "plugins": [
       [
         "expo-build-properties",
@@ -16,8 +21,7 @@
           "android": {
             "compileSdkVersion": 35,
             "targetSdkVersion": 35,
-            "minSdkVersion": 24,
-            "buildToolsVersion": "35.0.0"
+            "minSdkVersion": 24
           }
         }
       ],
@@ -25,13 +29,15 @@
         "expo-location",
         {
           "locationAlwaysAndWhenInUsePermission": "Esta aplicación requiere acceso a tu ubicación para registrar tu trayecto de asistencia.",
+          "locationWhenInUsePermission": "Esta aplicación requiere acceso a tu ubicación mientras la utilizas.",
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true
         }
       ],
       "expo-sqlite",
       "expo-secure-store",
-      "expo-image-picker"
+      "expo-image-picker",
+      "expo-notifications"
     ],
     "ios": {
       "supportsTablet": true,
@@ -64,8 +70,6 @@
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_LOCATION",
         "android.permission.CAMERA",
-        "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.RECORD_AUDIO"
       ]
     },

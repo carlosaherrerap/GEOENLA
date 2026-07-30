@@ -111,7 +111,7 @@ export const DeviceInfoScreen: React.FC<Props> = ({ onBack }) => {
     setSyncing(true);
     try {
       await apiService.syncBulk(queue);
-      offlineStorage.clearSyncedQueue(queue.map((q) => q.id));
+      offlineStorage.clearSyncedQueue(queue.length);
       Alert.alert('¡Sincronizado!', `${queue.length} registros sincronizados con la nube.`);
     } catch (err: any) {
       Alert.alert('Error de sincronización', err.message || 'Error al conectar con la base de datos.');

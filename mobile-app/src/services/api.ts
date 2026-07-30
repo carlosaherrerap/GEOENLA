@@ -9,7 +9,7 @@ export const setAuthToken = (token: string | null) => {
 
 export const getAuthToken = () => authToken;
 
-async function request(endpoint: string, options: RequestInit = {}) {
+async function request(endpoint: string, options: RequestInit = {}, retries = 2) {
   const headers: Record<string, string> = {
     'Accept': 'application/json',
     'Bypass-Tunnel-Reminder': 'true',
@@ -27,12 +27,25 @@ async function request(endpoint: string, options: RequestInit = {}) {
   const url = `${API_BASE_URL}${endpoint}`;
   console.log(`[API] ${options.method || 'GET'} ${url}`);
 
-  let response: Response;
-  try {
-    response = await fetch(url, { ...options, headers });
-  } catch (networkErr: any) {
-    console.error('[API] Network error:', networkErr.message);
-    throw new Error('No se pudo conectar al servidor. Verifica tu conexión a internet.');
+  let response: Response | null = null;
+  let lastError: any = null;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      response = await fetch(url, { ...options, headers });
+      if (response) break;
+    } catch (networkErr: any) {
+      lastError = networkErr;
+      console.warn(`[API] Intento ${attempt + 1}/${retries + 1} falló:`, networkErr?.message);
+      if (attempt < retries) {
+        await new Promise((res) => setTimeout(() => res(true), 2500));
+      }
+    }
+  }
+
+  if (!response) {
+    console.error('[API] Network error final:', lastError?.message);
+    throw new Error('El servidor está iniciando en la nube (Render) o no hay conexión. Reintenta en unos segundos.');
   }
 
   const text = await response.text();
@@ -42,7 +55,7 @@ async function request(endpoint: string, options: RequestInit = {}) {
     data = JSON.parse(text);
   } catch {
     console.error('[API] Respuesta no-JSON recibida:', text.substring(0, 200));
-    throw new Error('El servidor devolvió una respuesta inesperada. Puede ser un problema del túnel de red.');
+    throw new Error('El servidor devolvió una respuesta inesperada.');
   }
 
   if (!response.ok) {
@@ -139,7 +152,7 @@ export const apiService = {
     });
   },
 
-  async updateDeviceInfo(deviceInfo: {
+  async updateDeviceInfo(deviceInfo: Partial<{
     manufacturer: string;
     model: string;
     os: string;
@@ -147,7 +160,7 @@ export const apiService = {
     battery_level: number;
     battery_state: string;
     app_version: string;
-  }) {
+  }>) {
     return request('/device', {
       method: 'POST',
       body: JSON.stringify(deviceInfo),
