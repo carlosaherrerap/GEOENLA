@@ -111,7 +111,7 @@ export const ActivityDetailScreen: React.FC<Props> = ({ activity, onBack }) => {
     (sedeLat === 0 && sedeLng === 0);
 
   const isAtSede = isFreeLocation || (distanceMeters !== null && distanceMeters <= 25.0);
-  const canTakePhoto = isFreeLocation || isAtSede || attendanceMarked;
+  const canTakePhoto = (isFreeLocation || isAtSede || attendanceMarked) && !activityCompleted;
 
   const handleStartHeading = () => {
     locationTracking.setCurrentActivity(activity.id);
@@ -290,9 +290,7 @@ export const ActivityDetailScreen: React.FC<Props> = ({ activity, onBack }) => {
     setShowSyncModal(true);
   };
 
-  // El botón TOMAR FOTO sólo aparece cuando el usuario está a 5 metros (o para marcar asistencia) o cuando el botón dice FINALIZAR ACTIVIDAD
-  const canTakePhoto = (isAtSede || attendanceMarked) && !activityCompleted;
-
+  // El botón TOMAR FOTO sólo aparece cuando el usuario está en la sede, sin sede, o ha marcado asistencia
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 60 }}>
       {/* Header Actions Row */}
