@@ -24,14 +24,14 @@
         <label class="form-label">Seleccionar Usuario *</label>
         <select v-model="selectedUser" class="form-select" @change="onUserChange">
           <option value="">-- Selecciona un usuario para ver su trayecto --</option>
-          <optgroup label="USUARIOS ACTIVOS (SESIÓN ACTIVA)" v-if="activeUsers.length > 0">
+          <optgroup label="🟢 USUARIOS ACTIVOS (SESIÓN ACTIVA)" v-if="activeUsers.length > 0">
             <option v-for="u in activeUsers" :key="u.id" :value="u.id">
-              [ACTIVO] {{ u.username }} {{ u.supervisor ? `(${u.supervisor.nombres} ${u.supervisor.ape_pat})` : '' }}
+              🟢 {{ u.username }} {{ u.supervisor ? `(${u.supervisor.nombres} ${u.supervisor.ape_pat})` : '' }}
             </option>
           </optgroup>
-          <optgroup label="USUARIOS INACTIVOS (SIN SESIÓN)" v-if="inactiveUsers.length > 0">
+          <optgroup label="🔴 USUARIOS INACTIVOS (SIN SESIÓN)" v-if="inactiveUsers.length > 0">
             <option v-for="u in inactiveUsers" :key="u.id" :value="u.id">
-              [INACTIVO] {{ u.username }} {{ u.supervisor ? `(${u.supervisor.nombres} ${u.supervisor.ape_pat})` : '' }}
+              🔴 {{ u.username }} {{ u.supervisor ? `(${u.supervisor.nombres} ${u.supervisor.ape_pat})` : '' }}
             </option>
           </optgroup>
         </select>
@@ -144,7 +144,15 @@ const attendances = ref([])
 const trackings = ref([])
 const selectedUser = ref('')
 const userSearchQuery = ref('')
-const selectedDate = ref(new Date().toISOString().split('T')[0])
+function getTodayLocalDate() {
+  const d = new Date()
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const selectedDate = ref(getTodayLocalDate())
 const activeAttendanceModal = ref(null)
 const hasFittedUserBounds = ref(false)
 let pollInterval = null
@@ -256,7 +264,18 @@ async function fetchTrackings() {
       fetchAttendances()
     ])
 
-    trackings.value = trackRes.data.data || []
+    const rawPoints = trackRes.data?.data || []
+    // Filtrar estrictamente por fecha local seleccionada (YYYY-MM-DD)
+    trackings.value = rawPoints.filter(t => {
+      if (!t.recorded_at) return false
+      const recDate = new Date(t.recorded_at)
+      const y = recDate.getFullYear()
+      const m = String(recDate.getMonth() + 1).padStart(2, '0')
+      const d = String(recDate.getDate()).padStart(2, '0')
+      const localDateStr = `${y}-${m}-${d}`
+      return localDateStr === selectedDate.value
+    })
+
     await nextTick()
     drawMap()
   } catch (err) {
@@ -288,9 +307,19 @@ async function drawMap() {
 
   const allCoords = []
 
-  // Omitir obligatoriamente el primer punto capturado por posible imprecisión inicial/cold start
-  const validTrackings = trackings.value.length > 1 ? trackings.value.slice(1) : trackings.value
-  const coords = validTrackings.map(t => [t.lat, t.lng])
+  // Filtrar coordenadas de prueba o imprecisas (-12.046374, -77.042793)
+  const realTrackings = trackings.value.filter(t => {
+    const lat = Number(t.lat)
+    const lng = Number(t.lng)
+    if (!lat || !lng || (lat === 0 && lng === 0)) return false
+    if (Math.abs(lat - (-12.046374)) < 0.0001 && Math.abs(lng - (-77.042793)) < 0.0001 && trackings.value.length > 1) {
+      return false
+    }
+    return true
+  })
+
+  const validTrackings = realTrackings.length > 1 ? realTrackings.slice(1) : realTrackings
+  const coords = validTrackings.map(t => [Number(t.lat), Number(t.lng)])
   allCoords.push(...coords)
 
   if (coords.length > 0) {
