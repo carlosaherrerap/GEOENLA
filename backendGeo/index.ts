@@ -748,7 +748,7 @@ protectedRoutes.get('/users/all', async (req: any, res) => {
       where: { id: { not: req.user.id } },
       include: {
         deviceDetail: true,
-        supervisor: { select: { nombres: true, ape_pat: true, ape_mat: true, doc: true } },
+        supervisor: { include: { location: true, schedule: true, ubiety: true } },
       },
       orderBy: { username: 'asc' },
     });

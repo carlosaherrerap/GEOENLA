@@ -52,8 +52,43 @@
       <p style="color: var(--text-muted); font-size: 0.875rem;">Para mantener el mapa organizado, debes seleccionar un usuario para desplegar su ruta completa de jornada y puntos de actividad.</p>
     </div>
 
+    <!-- Información de Sede Asignada y Usuario -->
+    <div class="card" v-if="selectedUserObj" style="margin-top: 16px; padding: 16px 20px; background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: var(--radius-lg);">
+      <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div style="width: 44px; height: 44px; border-radius: 50%; background: var(--primary-light); color: var(--primary); display: flex; align-items: center; justify-content: center; font-size: 1.4rem;">
+            <i class="ph ph-user-circle"></i>
+          </div>
+          <div>
+            <h3 style="margin: 0; font-size: 1.05rem; font-weight: 700; color: var(--text-heading);">
+              {{ selectedUserObj.supervisor ? `${selectedUserObj.supervisor.nombres} ${selectedUserObj.supervisor.ape_pat} ${selectedUserObj.supervisor.ape_mat || ''}` : selectedUserObj.username }}
+            </h3>
+            <p style="margin: 2px 0 0 0; font-size: 0.85rem; color: var(--text-muted); font-family: var(--font-mono);">
+              @{{ selectedUserObj.username }} &bull; DNI / Doc: {{ selectedUserObj.supervisor?.doc || '-' }}
+            </p>
+          </div>
+        </div>
+
+        <!-- Información de Sede (tabla: sedes) -->
+        <div style="display: flex; gap: 20px; flex-wrap: wrap; background: var(--bg-subtle); padding: 10px 16px; border-radius: var(--radius); border: 1px solid var(--border-subtle);">
+          <div>
+            <span style="font-size: 0.7rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block;">SEDE REG (DEPARTAMENTO)</span>
+            <strong style="font-size: 0.9rem; color: var(--text-heading);">{{ selectedUserObj.supervisor?.location?.sede_reg || 'N/A' }}</strong>
+          </div>
+          <div style="border-left: 1px solid var(--border-subtle); padding-left: 16px;">
+            <span style="font-size: 0.7rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block;">SEDE JURIS (PROVINCIA)</span>
+            <strong style="font-size: 0.9rem; color: var(--text-heading);">{{ selectedUserObj.supervisor?.location?.sede_juris || 'N/A' }}</strong>
+          </div>
+          <div style="border-left: 1px solid var(--border-subtle); padding-left: 16px;">
+            <span style="font-size: 0.7rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block;">NOMBRE DE SEDE</span>
+            <strong style="font-size: 0.9rem; color: var(--primary);">{{ selectedUserObj.supervisor?.location?.nombre || 'Sin Sede Asignada' }}</strong>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Compact Badges -->
-    <div class="badges-row" v-else-if="selectedUserObj">
+    <div class="badges-row" v-if="selectedUserObj">
       <div :class="['chip-badge', selectedUserActive ? 'chip-success' : 'chip-danger']" style="display: inline-flex; align-items: center; gap: 8px;">
         <span :class="['semaforo-dot', selectedUserActive ? 'semaforo-online' : 'semaforo-offline']"></span>
         <span><strong>Estado App:</strong> {{ selectedUserActive ? 'SESIÓN ACTIVA (EN LÍNEA)' : 'SIN SESIÓN (DESCONECTADO)' }}</span>
@@ -219,7 +254,8 @@ async function fetchUsers() {
   try {
     const { data } = await api.get('/users/all')
     const allUsers = data.data || []
-    users.value = allUsers.filter(u => u.rol === 'usuario' || !u.rol || u.rol === 'admin')
+    // NUNCA permitir usuarios con rol ADMINISTRADOR en el Mapa en Vivo
+    users.value = allUsers.filter(u => u.rol === 'usuario')
   } catch (err) {
     console.error('Error fetching users:', err)
   }
