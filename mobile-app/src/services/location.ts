@@ -45,6 +45,9 @@ class LocationTrackingService {
   private lastSavedPoint: { lat: number; lng: number; timestamp: number } | null = null;
   private lastDbSaveTimestamp: number = 0;
 
+  private watchdogTimer: any = null;
+  private isGpsWarningAlertActive = false;
+
   public setUserEmail(email: string) {
     this.userEmail = email;
   }
@@ -61,10 +64,57 @@ class LocationTrackingService {
     return this.isTracking;
   }
 
+  private startGpsWatchdog() {
+    if (this.watchdogTimer) return;
+    this.watchdogTimer = setInterval(async () => {
+      await this.checkGpsStatusAndAutoRecover();
+    }, 10000);
+  }
+
+  public async checkGpsStatusAndAutoRecover() {
+    try {
+      const isGpsEnabled = await Location.hasServicesEnabledAsync();
+      const { status } = await Location.getForegroundPermissionsAsync();
+
+      if (!isGpsEnabled || status !== 'granted') {
+        if (!this.isGpsWarningAlertActive) {
+          this.isGpsWarningAlertActive = true;
+          const { Alert } = require('react-native');
+          Alert.alert(
+            'GPS Desactivado o Bloqueado',
+            'Se ha detectado que el sistema de localización (GPS) está apagado o restringido por otra app. Por favor, activa la Ubicación en la barra de tu teléfono para mantener la transmisión activa.',
+            [
+              {
+                text: 'Entendido',
+                onPress: () => {
+                  this.isGpsWarningAlertActive = false;
+                },
+              },
+            ]
+          );
+        }
+      } else {
+        this.isGpsWarningAlertActive = false;
+        if (!this.isTracking) {
+          console.log('[GPS Watchdog] Reactivando transmisión GPS automáticamente...');
+          await this.startTracking();
+        }
+      }
+    } catch (err) {
+      console.warn('[GPS Watchdog Error]', err);
+    }
+  }
+
   public async startTracking() {
+    this.startGpsWatchdog();
     if (this.isTracking) return;
 
     try {
+      const isGpsEnabled = await Location.hasServicesEnabledAsync();
+      if (!isGpsEnabled) {
+        await this.checkGpsStatusAndAutoRecover();
+      }
+
       const { status: foregroundStatus } = await Location.requestForegroundPermissionsAsync();
       if (foregroundStatus !== 'granted') return;
 
@@ -85,16 +135,18 @@ class LocationTrackingService {
         }
       );
 
-      // Tarea en segundo plano
+      // Tarea en segundo plano con permanencia forzada
       const hasStartedBackground = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
       if (!hasStartedBackground && backgroundStatus === 'granted') {
         await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
-          accuracy: Location.Accuracy.Balanced,
-          timeInterval: 15000,
-          distanceInterval: 5,
+          accuracy: Location.Accuracy.High,
+          timeInterval: 10000,
+          distanceInterval: 3,
+          showsBackgroundLocationIndicator: true,
+          pausesUpdatesAutomatically: false,
           foregroundService: {
-            notificationTitle: 'GeoApp ENLA',
-            notificationBody: 'Transmitiendo ubicación autorizada para INEI...',
+            notificationTitle: 'GeoApp ENLA - GPS Activo',
+            notificationBody: 'Transmitiendo ubicación autorizada en segundo plano',
             notificationColor: '#024ad8',
           },
         });

@@ -38,11 +38,13 @@
         </div>
 
         <div class="summary-card">
-          <span class="summary-label">Trabajador Asignado</span>
-          <span class="summary-value">
-            {{ activity.user?.supervisor ? `${activity.user.supervisor.nombres} ${activity.user.supervisor.ape_pat}` : (activity.user?.username ? `@${activity.user.username}` : 'Sin asignar') }}
-          </span>
-          <small style="color: var(--text-muted); font-size: 0.75rem;">{{ activity.user?.correo || '-' }}</small>
+          <span class="summary-label">Personal Asignado ({{ assignedUsersList.length }})</span>
+          <div v-if="assignedUsersList.length > 0" style="margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px;">
+            <span v-for="u in assignedUsersList" :key="u?.id" class="badge badge-info" style="font-size: 0.8rem;">
+              {{ getUserDisplayName(u) }}
+            </span>
+          </div>
+          <span v-else class="summary-value" style="font-size: 0.85rem; color: var(--text-muted);">Sin asignar</span>
         </div>
 
         <div class="summary-card">
@@ -104,13 +106,32 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import api from '../services/api'
 
 const props = defineProps({ id: String })
 
 const activity = ref(null)
 const loading = ref(true)
+
+const assignedUsersList = computed(() => {
+  if (!activity.value) return []
+  if (activity.value.activityUsers && activity.value.activityUsers.length > 0) {
+    return activity.value.activityUsers.map(au => au.user).filter(Boolean)
+  }
+  if (activity.value.user) {
+    return [activity.value.user]
+  }
+  return []
+})
+
+function getUserDisplayName(u) {
+  if (!u) return '-'
+  if (u.supervisor && (u.supervisor.nombres || u.supervisor.ape_pat)) {
+    return `${u.supervisor.nombres || ''} ${u.supervisor.ape_pat || ''}`.trim()
+  }
+  return u.username ? `@${u.username}` : '-'
+}
 
 function statusClass(estado) {
   const map = { pendiente: 'badge-warning', en_progreso: 'badge-info', completado: 'badge-success', cancelado: 'badge-danger' }

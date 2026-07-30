@@ -151,8 +151,16 @@
             <td style="font-weight: 600;">{{ act.location?.nombre || '-' }}</td>
             <td style="font-family: var(--font-mono); font-size: 0.8rem;">{{ act.period?.nombre || '-' }}</td>
             <td>
-              <span v-if="act.user" style="font-weight: 600;">
-                {{ act.user.supervisor ? `${act.user.supervisor.nombres} ${act.user.supervisor.ape_pat}` : `@${act.user.username}` }}
+              <div v-if="act.activityUsers && act.activityUsers.length > 0" style="display: flex; flex-direction: column; gap: 4px;">
+                <span style="font-weight: 600; color: var(--text-heading); font-size: 0.85rem;">
+                  {{ getUserDisplayName(act.activityUsers[0].user) }}
+                </span>
+                <span v-if="act.activityUsers.length > 1" class="badge badge-primary" style="align-self: flex-start; font-size: 0.75rem;">
+                  +{{ act.activityUsers.length - 1 }} más ({{ act.activityUsers.length }} asignados)
+                </span>
+              </div>
+              <span v-else-if="act.user" style="font-weight: 600; font-size: 0.85rem;">
+                {{ getUserDisplayName(act.user) }}
               </span>
               <span v-else style="color: var(--text-muted); font-size: 0.8rem;">Sin asignar</span>
             </td>
@@ -473,6 +481,14 @@ function onToggleFreeLocation() {
     newLocation.value.latitud = 0
     newLocation.value.longitud = 0
   }
+}
+
+function getUserDisplayName(u) {
+  if (!u) return '-'
+  if (u.supervisor && (u.supervisor.nombres || u.supervisor.ape_pat)) {
+    return `${u.supervisor.nombres || ''} ${u.supervisor.ape_pat || ''}`.trim()
+  }
+  return u.username ? `@${u.username}` : '-'
 }
 
 const newPeriod = ref({
