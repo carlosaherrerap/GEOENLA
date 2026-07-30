@@ -1325,23 +1325,40 @@ adminRoutes.delete('/routes/:id', async (req, res) => {
 });
 
 adminRoutes.post('/activities', async (req, res) => {
-  const { id_period, id_location, id_user, actividad, detalle, estado } = req.body;
+  const { id_period, id_location, id_user, id_users, actividad, detalle, estado } = req.body;
 
   if (!id_period || !id_location || !actividad || !detalle) {
     return res.status(400).json({ message: 'id_period, id_location, actividad y detalle son requeridos.' });
   }
 
+  const userIds: string[] = Array.isArray(id_users) && id_users.length > 0
+    ? id_users
+    : (id_user ? [id_user] : []);
+
+  const primaryUserId = userIds.length > 0 ? userIds[0] : null;
+
   const activity = await prisma.activities.create({
     data: {
       id_period,
       id_location,
-      id_user: id_user || null,
+      id_user: primaryUserId,
       actividad,
       detalle,
       estado: estado || 'pendiente'
     },
     include: { period: true, location: true, user: true },
   });
+
+  if (userIds.length > 0) {
+    await prisma.activity_users.createMany({
+      data: userIds.map((uid) => ({
+        id_activity: activity.id,
+        id_user: uid,
+      })),
+      skipDuplicates: true,
+    });
+  }
+
   res.status(201).json({ message: 'Actividad creada exitosamente.', activity });
 });
 

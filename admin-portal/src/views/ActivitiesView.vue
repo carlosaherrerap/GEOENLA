@@ -19,15 +19,23 @@
 
       <form @submit.prevent="createActivity">
         <div class="grid-3">
-          <!-- Asignar Usuario -->
+          <!-- Asignar Usuario (Modal Multi-Selección) -->
           <div class="form-group">
-            <label class="form-label">Asignar a Usuario</label>
-            <select v-model="newActivity.id_user" class="form-select">
-              <option value="">-- Sin usuario asignado --</option>
-              <option v-for="u in usersList" :key="u.id" :value="u.id">
-                {{ u.supervisor ? `${u.supervisor.nombres} ${u.supervisor.ape_pat}` : u.username }} (@{{ u.username }})
-              </option>
-            </select>
+            <label class="form-label">Asignar Usuarios *</label>
+            <button
+              type="button"
+              class="btn"
+              @click="showUserSelectionModal = true"
+              style="width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: var(--bg-subtle); border: 1px solid var(--border); color: var(--text-heading); font-weight: 600;"
+            >
+              <span style="display: flex; align-items: center; gap: 8px;">
+                <i class="ph ph-users-three" style="font-size: 1.2rem; color: var(--primary);"></i>
+                ASIGNAR USUARIO
+              </span>
+              <span class="badge badge-primary" style="font-size: 0.85rem;">
+                [{{ selectedUserIds.length }} {{ selectedUserIds.length === 1 ? 'usuario seleccionado' : 'usuarios seleccionados' }}]
+              </span>
+            </button>
           </div>
 
           <!-- Seleccionar Sede -->
@@ -293,6 +301,116 @@
         </form>
       </div>
     </div>
+    <!-- MODAL: SELECCIÓN AVANZADA MULTIPLE DE USUARIOS -->
+    <div v-if="showUserSelectionModal" class="modal-overlay" @click.self="showUserSelectionModal = false">
+      <div class="modal-card" style="max-width: 650px; max-height: 85vh; display: flex; flex-direction: column;">
+        <div class="modal-header">
+          <div>
+            <h3 class="modal-title">Seleccionar Usuarios para la Actividad</h3>
+            <span style="font-size: 0.75rem; color: var(--primary); font-weight: 600;">
+              Asignación Múltiple ({{ selectedUserIds.length }} seleccionados)
+            </span>
+          </div>
+          <button class="btn-close" @click="showUserSelectionModal = false">&times;</button>
+        </div>
+
+        <div style="padding: 16px 20px; overflow-y: auto; flex: 1;">
+          <!-- Barra de Búsqueda y Acciones Rápidas (4 Formas) -->
+          <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px;">
+            <input
+              type="text"
+              v-model="userSearchQuery"
+              placeholder="🔍 Buscar por nombre, usuario, correo o DNI..."
+              class="form-input"
+            />
+
+            <!-- Formas de Selección Masiva -->
+            <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+              <!-- Forma 2: Seleccionar Todos -->
+              <button type="button" class="btn btn-sm btn-secondary" @click="selectAllUsers">
+                <i class="ph ph-check-square-offset"></i> Seleccionar Todos ({{ usersList.length }})
+              </button>
+
+              <!-- Forma 3: Selección Inversa -->
+              <button type="button" class="btn btn-sm btn-secondary" @click="invertUserSelection">
+                <i class="ph ph-swap"></i> Selección Inversa
+              </button>
+
+              <!-- Botón Limpiar -->
+              <button type="button" class="btn btn-sm btn-ghost" @click="selectedUserIds = []" style="color: var(--danger);">
+                Limpiar Todo
+              </button>
+            </div>
+
+            <!-- Forma 4: Por Sede Regional (sede_reg) -->
+            <div style="display: flex; align-items: center; gap: 8px; background: var(--bg-subtle); padding: 8px 12px; border-radius: var(--radius); border: 1px solid var(--border-subtle);">
+              <span style="font-size: 0.8rem; font-weight: 700; color: var(--text-heading); white-space: nowrap;">
+                SELECCIONAR POR SEDE REGIONAL:
+              </span>
+              <select v-model="selectedSedeRegFilter" class="form-select" style="padding: 4px 8px; font-size: 0.85rem;">
+                <option value="">-- Seleccionar Departamento / Sede Reg --</option>
+                <option v-for="reg in availableSedeRegs" :key="reg" :value="reg">
+                  {{ reg }}
+                </option>
+              </select>
+              <button
+                type="button"
+                class="btn btn-sm btn-primary"
+                :disabled="!selectedSedeRegFilter"
+                @click="selectBySedeReg"
+              >
+                Marcar Sede Reg
+              </button>
+            </div>
+          </div>
+
+          <!-- Forma 1: Lista por Checkboxes Individuales -->
+          <div style="border: 1px solid var(--border); border-radius: var(--radius); max-height: 320px; overflow-y: auto;">
+            <div
+              v-for="u in modalFilteredUsers"
+              :key="u.id"
+              style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--border-subtle); cursor: pointer;"
+              :style="{ background: selectedUserIds.includes(u.id) ? 'var(--primary-light)' : 'transparent' }"
+              @click="toggleUserSelection(u.id)"
+            >
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <input
+                  type="checkbox"
+                  :checked="selectedUserIds.includes(u.id)"
+                  @click.stop="toggleUserSelection(u.id)"
+                  style="width: 18px; height: 18px; cursor: pointer;"
+                />
+                <div>
+                  <strong style="font-size: 0.9rem; color: var(--text-heading);">
+                    {{ u.supervisor ? `${u.supervisor.nombres} ${u.supervisor.ape_pat} ${u.supervisor.ape_mat || ''}` : u.username }}
+                  </strong>
+                  <span style="font-size: 0.8rem; color: var(--text-muted); display: block;">
+                    @{{ u.username }} &bull; DNI: {{ u.supervisor?.doc || '-' }} &bull; Sede: {{ u.supervisor?.location?.nombre || 'General' }}
+                  </span>
+                </div>
+              </div>
+
+              <span class="badge badge-info" style="font-size: 0.75rem;">
+                {{ getSedeReg(u) }}
+              </span>
+            </div>
+
+            <div v-if="modalFilteredUsers.length === 0" style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 0.85rem;">
+              No se encontraron usuarios coincidentes con la búsqueda.
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 0.85rem; font-weight: 700; color: var(--primary);">
+            {{ selectedUserIds.length }} usuarios seleccionados
+          </span>
+          <button type="button" class="btn btn-primary" @click="showUserSelectionModal = false">
+            Confirmar Selección
+          </button>
+        </div>
+      </div>
+    </div>
 
   </div>
 </template>
@@ -369,12 +487,74 @@ async function fetchActivities() {
   }
 }
 
+const showUserSelectionModal = ref(false)
+const selectedUserIds = ref([])
+const userSearchQuery = ref('')
+const selectedSedeRegFilter = ref('')
+
+function getSedeReg(u) {
+  return u.supervisor?.location?.sede_reg || u.location?.sede_reg || '-'
+}
+
+const availableSedeRegs = computed(() => {
+  const regs = new Set()
+  usersList.value.forEach(u => {
+    const reg = getSedeReg(u)
+    if (reg && reg !== '-') regs.add(reg.toUpperCase())
+  })
+  return Array.from(regs).sort()
+})
+
+const modalFilteredUsers = computed(() => {
+  if (!userSearchQuery.value.trim()) return usersList.value
+  const q = userSearchQuery.value.toLowerCase().trim()
+  return usersList.value.filter(u => {
+    const uname = (u.username || '').toLowerCase()
+    const mail = (u.correo || '').toLowerCase()
+    const names = u.supervisor ? `${u.supervisor.nombres} ${u.supervisor.ape_pat} ${u.supervisor.ape_mat}`.toLowerCase() : ''
+    const doc = u.supervisor?.doc ? String(u.supervisor.doc).toLowerCase() : ''
+    const reg = getSedeReg(u).toLowerCase()
+    return uname.includes(q) || mail.includes(q) || names.includes(q) || doc.includes(q) || reg.includes(q)
+  })
+})
+
+function toggleUserSelection(id) {
+  const idx = selectedUserIds.value.indexOf(id)
+  if (idx === -1) {
+    selectedUserIds.value.push(id)
+  } else {
+    selectedUserIds.value.splice(idx, 1)
+  }
+}
+
+function selectAllUsers() {
+  selectedUserIds.value = usersList.value.map(u => u.id)
+}
+
+function invertUserSelection() {
+  const allIds = usersList.value.map(u => u.id)
+  const currentSet = new Set(selectedUserIds.value)
+  selectedUserIds.value = allIds.filter(id => !currentSet.has(id))
+}
+
+function selectBySedeReg() {
+  if (!selectedSedeRegFilter.value) return
+  const targetReg = selectedSedeRegFilter.value.toUpperCase()
+  const matchingUserIds = usersList.value
+    .filter(u => getSedeReg(u).toUpperCase() === targetReg)
+    .map(u => u.id)
+
+  const currentSet = new Set(selectedUserIds.value)
+  matchingUserIds.forEach(id => currentSet.add(id))
+  selectedUserIds.value = Array.from(currentSet)
+}
+
 async function fetchDropdownData() {
   try {
     const [locRes, perRes, usrRes] = await Promise.all([
       api.get('/locations'),
       api.get('/periods'),
-      api.get('/users/list')
+      api.get('/users/all')
     ])
     locationsList.value = locRes.data.data || []
     periodsList.value = perRes.data.data || []
@@ -385,11 +565,21 @@ async function fetchDropdownData() {
 }
 
 async function createActivity() {
+  if (selectedUserIds.value.length === 0) {
+    alert('Por favor selecciona al menos un usuario para la actividad.')
+    return
+  }
   creating.value = true
   try {
-    await api.post('/activities', newActivity.value)
+    const payload = {
+      ...newActivity.value,
+      id_user: selectedUserIds.value[0],
+      id_users: selectedUserIds.value
+    }
+    await api.post('/activities', payload)
     showCreate.value = false
     newActivity.value = { actividad: '', detalle: '', estado: 'pendiente', id_period: '', id_location: '', id_user: '' }
+    selectedUserIds.value = []
     await fetchActivities()
     alert('¡Actividad creada y asignada exitosamente!')
   } catch (err) {

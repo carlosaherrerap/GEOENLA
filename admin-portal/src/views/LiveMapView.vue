@@ -112,6 +112,36 @@
       </div>
     </div>
 
+    <!-- TIMELINE / HISTORIAL SLIDER -->
+    <div class="card" v-if="selectedUser && trackings.length > 0" style="margin-top: 16px; padding: 16px 20px; background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: var(--radius-lg);">
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <i class="ph ph-clock-counter-clockwise" style="font-size: 1.3rem; color: var(--primary);"></i>
+          <h4 style="margin: 0; font-size: 0.95rem; font-weight: 700; color: var(--text-heading);">
+            Línea de Tiempo / Historial de Recorrido
+          </h4>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <span style="font-size: 0.85rem; font-weight: 700; color: var(--primary); font-family: var(--font-mono);">
+            Punto {{ timelineIndex }} de {{ trackings.length }}
+          </span>
+          <span style="font-size: 0.8rem; color: var(--text-muted); background: var(--bg-subtle); padding: 4px 8px; border-radius: 4px; font-family: var(--font-mono);">
+            Hora: {{ currentTimelineTime }}
+          </span>
+        </div>
+      </div>
+
+      <!-- Input Range Slider -->
+      <input
+        type="range"
+        :min="1"
+        :max="trackings.length"
+        v-model.number="timelineIndex"
+        @input="onTimelineSliderChange"
+        style="width: 100%; height: 8px; cursor: pointer; accent-color: var(--primary);"
+      />
+    </div>
+
     <!-- Map -->
     <div class="card" style="margin-top: 16px;" v-show="selectedUser">
       <div id="live-map" class="map-container" style="height: 600px; border-radius: var(--radius-lg);"></div>
@@ -350,6 +380,53 @@ const realTimeLocation = ref({
 
 const geocodeCache = new Map()
 
+const timelineIndex = ref(1)
+const isPlayingTimeline = ref(false)
+let timelineTimer = null
+
+const currentTimelineTime = computed(() => {
+  if (trackings.value.length === 0) return '-'
+  const idx = Math.min(Math.max(1, timelineIndex.value), trackings.value.length) - 1
+  const pt = trackings.value[idx]
+  return pt && pt.recorded_at ? new Date(pt.recorded_at).toLocaleTimeString() : '-'
+})
+
+function onTimelineSliderChange() {
+  drawMap()
+}
+
+function toggleTimelinePlayback() {
+  if (isPlayingTimeline.value) {
+    pauseTimeline()
+  } else {
+    playTimeline()
+  }
+}
+
+function playTimeline() {
+  if (trackings.value.length <= 1) return
+  if (timelineIndex.value >= trackings.value.length) {
+    timelineIndex.value = 1
+  }
+  isPlayingTimeline.value = true
+  timelineTimer = setInterval(() => {
+    if (timelineIndex.value < trackings.value.length) {
+      timelineIndex.value++
+      drawMap()
+    } else {
+      pauseTimeline()
+    }
+  }, 400)
+}
+
+function pauseTimeline() {
+  isPlayingTimeline.value = false
+  if (timelineTimer) {
+    clearInterval(timelineTimer)
+    timelineTimer = null
+  }
+}
+
 async function updateRealTimeLocation(lat, lng) {
   if (!lat || !lng) return
   const cacheKey = `${Number(lat).toFixed(3)},${Number(lng).toFixed(3)}`
@@ -407,6 +484,9 @@ async function fetchTrackings() {
       return localDateStr === selectedDate.value
     })
 
+    pauseTimeline()
+    timelineIndex.value = trackings.value.length > 0 ? trackings.value.length : 1
+
     const lastPt = trackings.value[trackings.value.length - 1]
     if (lastPt) {
       updateRealTimeLocation(lastPt.lat, lastPt.lng)
@@ -460,7 +540,10 @@ async function drawMap() {
     return true
   })
 
-  const validTrackings = realTrackings.length > 1 ? realTrackings.slice(1) : realTrackings
+  // Recortar puntos según la posición del slider de la Línea de Tiempo (History Timeline)
+  const maxIdx = Math.min(Math.max(1, timelineIndex.value), realTrackings.length)
+  const slicedTrackings = realTrackings.slice(0, maxIdx)
+  const validTrackings = slicedTrackings.length > 1 ? slicedTrackings.slice(1) : slicedTrackings
   const coords = validTrackings.map(t => [Number(t.lat), Number(t.lng)])
   allCoords.push(...coords)
 

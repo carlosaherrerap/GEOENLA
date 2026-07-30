@@ -18,15 +18,16 @@
       </div>
       <div class="form-group" style="margin: 0; flex: 1;">
         <label class="form-label">Estado</label>
-        <select v-model="filterEstado" class="form-select" @change="fetchUsers">
+        <select v-model="filterEstado" class="form-select" @change="currentPage = 1">
           <option value="">Todos los Estados</option>
-          <option value="activo">Activo</option>
-          <option value="bloqueado">Bloqueado</option>
+          <option value="activos">ACTIVOS (Sesión Activa)</option>
+          <option value="inactivos">INACTIVOS (Sin Sesión / Desconectados)</option>
+          <option value="bloqueado">Bloqueados</option>
         </select>
       </div>
       <div class="form-group" style="margin: 0; flex: 1;">
         <label class="form-label">Rol</label>
-        <select v-model="filterRol" class="form-select" @change="fetchUsers">
+        <select v-model="filterRol" class="form-select" @change="currentPage = 1">
           <option value="">Todos los Roles</option>
           <option value="admin">Administrador</option>
           <option value="usuario">Usuario de Campo</option>
@@ -50,7 +51,7 @@
       <table>
         <thead>
           <tr>
-            <th>Personal</th>
+            <th>Personal (Apellidos A-Z)</th>
             <th>Nombre de Usuario</th>
             <th>Correo Electrónico</th>
             <th>DNI / Doc</th>
@@ -61,9 +62,9 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="user in filteredUsers" :key="user.id">
+          <tr v-for="user in paginatedUsers" :key="user.id">
             <td style="font-weight: 600; color: var(--text-heading);">
-              {{ user.supervisor ? `${user.supervisor.nombres} ${user.supervisor.ape_pat}` : user.username }}
+              {{ user.supervisor ? `${user.supervisor.ape_pat} ${user.supervisor.ape_mat || ''}, ${user.supervisor.nombres}` : user.username }}
             </td>
             <td style="font-family: var(--font-mono); font-size: 0.85rem;">@{{ user.username }}</td>
             <td>{{ user.correo }}</td>
@@ -91,13 +92,39 @@
               </div>
             </td>
           </tr>
-          <tr v-if="filteredUsers.length === 0">
+          <tr v-if="allFilteredUsers.length === 0">
             <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 40px;">
               No se encontraron usuarios registrados.
             </td>
           </tr>
         </tbody>
       </table>
+
+      <!-- Controles de Paginación (20 en 20) -->
+      <div v-if="allFilteredUsers.length > 0" style="display: flex; justify-content: space-between; align-items: center; padding: 16px; border-top: 1px solid var(--border-subtle); background: var(--bg-subtle);">
+        <span style="font-size: 0.85rem; color: var(--text-muted);">
+          Mostrando {{ (currentPage - 1) * pageSize + 1 }} - {{ Math.min(currentPage * pageSize, allFilteredUsers.length) }} de {{ allFilteredUsers.length }} usuarios
+        </span>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <button
+            class="btn btn-sm btn-secondary"
+            :disabled="currentPage === 1"
+            @click="currentPage--"
+          >
+            Anterior
+          </button>
+          <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-heading);">
+            Página {{ currentPage }} de {{ totalPages }}
+          </span>
+          <button
+            class="btn btn-sm btn-secondary"
+            :disabled="currentPage >= totalPages"
+            @click="currentPage++"
+          >
+            Siguiente
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- MODAL WIZARD: NUEVO USUARIO (LIGHT THEME) -->
@@ -318,14 +345,31 @@ const search = ref('')
 const filterEstado = ref('')
 const filterRol = ref('')
 
-const filteredUsers = computed(() => {
-  let list = users.value
-  if (filterEstado.value) {
-    list = list.filter(u => u.estado === filterEstado.value)
+const currentPage = ref(1)
+const pageSize = 20
+
+function getFullLastName(u) {
+  if (u.supervisor && (u.supervisor.ape_pat || u.supervisor.ape_mat)) {
+    return `${u.supervisor.ape_pat || ''} ${u.supervisor.ape_mat || ''} ${u.supervisor.nombres || ''}`.trim().toLowerCase()
   }
+  return (u.username || '').toLowerCase()
+}
+
+const allFilteredUsers = computed(() => {
+  let list = [...users.value]
+
+  if (filterEstado.value === 'activos') {
+    list = list.filter(u => isUserActive(u))
+  } else if (filterEstado.value === 'inactivos') {
+    list = list.filter(u => !isUserActive(u))
+  } else if (filterEstado.value === 'bloqueado') {
+    list = list.filter(u => u.estado === 'bloqueado')
+  }
+
   if (filterRol.value) {
     list = list.filter(u => u.rol === filterRol.value)
   }
+
   if (search.value && search.value.trim()) {
     const q = search.value.toLowerCase().trim()
     list = list.filter(u => {
@@ -336,7 +380,18 @@ const filteredUsers = computed(() => {
       return uname.includes(q) || mail.includes(q) || sName.includes(q) || doc.includes(q)
     })
   }
+
+  // Ordenar alfabéticamente por apellidos A - Z
+  list.sort((a, b) => getFullLastName(a).localeCompare(getFullLastName(b)))
+
   return list
+})
+
+const totalPages = computed(() => Math.ceil(allFilteredUsers.value.length / pageSize) || 1)
+
+const paginatedUsers = computed(() => {
+  const start = (currentPage.value - 1) * pageSize
+  return allFilteredUsers.value.slice(start, start + pageSize)
 })
 
 function isUserActive(u) {

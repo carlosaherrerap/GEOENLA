@@ -11,15 +11,16 @@
     <div v-if="loading" class="loading">Cargando datos del trabajador...</div>
 
     <template v-else-if="user">
-      <!-- Datos Personales y Dispositivo -->
-      <div class="card-grid" style="margin-bottom: 24px;">
-        <div class="card stat-card">
-          <div class="stat-value" style="font-size: 1.2rem; font-weight: 600;">{{ user.username }}</div>
-          <div class="stat-label">Nombre de Usuario</div>
-          <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">{{ user.correo }}</div>
+      <!-- Datos Personales y Dispositivo (Compacto) -->
+      <div class="card-grid" style="margin-bottom: 16px; gap: 12px;">
+        <div class="card stat-card" style="padding: 12px 16px;">
+          <div class="stat-value" style="font-size: 1.1rem; font-weight: 700;">
+            {{ user.supervisor ? `${user.supervisor.ape_pat} ${user.supervisor.ape_mat || ''}, ${user.supervisor.nombres}` : user.username }}
+          </div>
+          <div class="stat-label" style="font-size: 0.8rem;">@{{ user.username }} &bull; {{ user.correo }}</div>
         </div>
 
-        <div class="card stat-card">
+        <div class="card stat-card" style="padding: 12px 16px;">
           <div style="display: flex; gap: 8px; justify-content: center; align-items: center;">
             <span :class="['badge', user.rol === 'admin' ? 'badge-info' : 'badge-primary']" style="text-transform: uppercase;">
               {{ user.rol }}
@@ -28,62 +29,74 @@
               {{ user.estado }}
             </span>
           </div>
-          <div class="stat-label" style="margin-top: 8px;">Rol y Estado</div>
+          <div class="stat-label" style="margin-top: 4px; font-size: 0.8rem;">DNI: {{ user.supervisor?.doc || '-' }} &bull; Rol y Estado</div>
         </div>
 
-        <div class="card stat-card" v-if="user.deviceDetail || user.device_detail">
-          <div class="stat-value" style="font-size: 1.1rem; color: #024ad8;">
+        <div class="card stat-card" style="padding: 12px 16px;" v-if="user.deviceDetail || user.device_detail">
+          <div class="stat-value" style="font-size: 1rem; color: #024ad8;">
             <i class="ph ph-device-mobile"></i>
             {{ (user.deviceDetail || user.device_detail).manufacturer }} {{ (user.deviceDetail || user.device_detail).model }}
           </div>
-          <div class="stat-label">
+          <div class="stat-label" style="font-size: 0.8rem;">
             SO: {{ (user.deviceDetail || user.device_detail).os }} {{ (user.deviceDetail || user.device_detail).os_version }} ·
             <i class="ph ph-battery-charging" style="color: #22c55e;"></i> {{ (user.deviceDetail || user.device_detail).battery_level }}%
           </div>
         </div>
       </div>
 
-      <!-- Ubicación Actual en Tiempo Real del Usuario (Departamento, Provincia, Distrito) -->
-      <div class="card" style="margin-bottom: 24px; padding: 16px 20px; background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: var(--radius-lg);">
-        <h3 style="margin: 0 0 12px 0; font-size: 1rem; font-weight: 700; color: var(--text-heading); display: flex; align-items: center; gap: 8px;">
-          <i class="ph ph-map-pin-line" style="color: var(--primary);"></i> Ubicación Actual en Tiempo Real
-        </h3>
-        <div style="display: flex; gap: 20px; flex-wrap: wrap; background: var(--bg-subtle); padding: 12px 18px; border-radius: var(--radius); border: 1px solid var(--border-subtle);">
-          <div>
-            <p style="margin: 0; font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">SEDE REGIONAL:</p>
-            <strong style="font-size: 0.95rem; color: var(--text-heading);">{{ realTimeLocation.department || user.supervisor?.location?.sede_reg || 'LIMA' }}</strong>
-          </div>
-          <div style="border-left: 1px solid var(--border-subtle); padding-left: 20px;">
-            <p style="margin: 0; font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">SEDE JURIS:</p>
-            <strong style="font-size: 0.95rem; color: var(--text-heading);">{{ realTimeLocation.province || user.supervisor?.location?.sede_juris || 'LIMA' }}</strong>
-          </div>
-          <div style="border-left: 1px solid var(--border-subtle); padding-left: 20px;">
-            <p style="margin: 0; font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">DISTRITO:</p>
-            <strong style="font-size: 0.95rem; color: var(--primary);">{{ realTimeLocation.district || 'CARGANDO...' }}</strong>
+      <!-- Ubicación Actual en Tiempo Real del Usuario (Compacto) -->
+      <div class="card" style="margin-bottom: 16px; padding: 12px 16px; background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: var(--radius-lg);">
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+          <h4 style="margin: 0; font-size: 0.9rem; font-weight: 700; color: var(--text-heading); display: flex; align-items: center; gap: 6px;">
+            <i class="ph ph-map-pin-line" style="color: var(--primary);"></i> Ubicación en Tiempo Real:
+          </h4>
+          <div style="display: flex; gap: 16px; flex-wrap: wrap; background: var(--bg-subtle); padding: 6px 14px; border-radius: var(--radius); border: 1px solid var(--border-subtle);">
+            <div>
+              <span style="font-size: 0.7rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">SEDE REGIONAL: </span>
+              <strong style="font-size: 0.85rem; color: var(--text-heading);">{{ realTimeLocation.department || user.supervisor?.location?.sede_reg || 'LIMA' }}</strong>
+            </div>
+            <div style="border-left: 1px solid var(--border-subtle); padding-left: 16px;">
+              <span style="font-size: 0.7rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">SEDE JURIS: </span>
+              <strong style="font-size: 0.85rem; color: var(--text-heading);">{{ realTimeLocation.province || user.supervisor?.location?.sede_juris || 'LIMA' }}</strong>
+            </div>
+            <div style="border-left: 1px solid var(--border-subtle); padding-left: 16px;">
+              <span style="font-size: 0.7rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">DISTRITO: </span>
+              <strong style="font-size: 0.85rem; color: var(--primary);">{{ realTimeLocation.district || 'CARGANDO...' }}</strong>
+            </div>
           </div>
         </div>
       </div>
 
       <!-- Recorrido en el Mapa -->
-      <div class="card" style="margin-bottom: 24px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-          <h3 style="display: flex; align-items: center; gap: 8px; font-size: 1.1rem; font-weight: 600; margin: 0;">
+      <div class="card" style="margin-bottom: 16px; padding: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <h3 style="display: flex; align-items: center; gap: 8px; font-size: 1rem; font-weight: 700; margin: 0;">
             <i class="ph ph-map-pin" style="color: #024ad8;"></i> Mapa del Recorrido
           </h3>
           <div style="display: flex; align-items: center; gap: 12px;">
-            <label class="form-label" style="margin: 0;">Fecha:</label>
-            <input v-model="trackingDate" type="date" class="form-input" style="width: auto;" @change="fetchTrackings" />
+            <label class="form-label" style="margin: 0; font-size: 0.85rem;">Fecha:</label>
+            <input v-model="trackingDate" type="date" class="form-input" style="width: auto; padding: 4px 8px;" @change="fetchTrackings" />
           </div>
         </div>
 
-        <div id="user-map" class="map-container" style="height: 480px; border-radius: 8px;"></div>
+        <div id="user-map" class="map-container" style="height: 400px; border-radius: 8px;"></div>
       </div>
 
-      <!-- Historial Ordenado del Recorrido y Actividades -->
-      <div class="card" style="margin-bottom: 24px;">
-        <h3 style="margin-bottom: 16px; display: flex; align-items: center; gap: 8px; font-size: 1.1rem; font-weight: 600;">
-          <i class="ph ph-list-numbers" style="color: #024ad8;"></i> Puntos de Recorrido y Registro GPS
-        </h3>
+      <!-- Historial Ordenado del Recorrido (Con Botón Excel y Paginación de 20 en 20) -->
+      <div class="card" style="margin-bottom: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
+          <h3 style="margin: 0; display: flex; align-items: center; gap: 8px; font-size: 1rem; font-weight: 700;">
+            <i class="ph ph-list-numbers" style="color: #024ad8;"></i> Puntos de Recorrido GPS ({{ trackings.length }} capturados)
+          </h3>
+          <button
+            type="button"
+            class="btn btn-sm"
+            @click="exportTrackingsToExcel"
+            style="background-color: #059669; color: white; border: none; display: inline-flex; align-items: center; gap: 6px; font-weight: 600;"
+          >
+            <i class="ph ph-file-xls" style="font-size: 1.1rem;"></i> Descargar Puntos en Excel (.xlsx)
+          </button>
+        </div>
 
         <div class="table-container">
           <table>
@@ -98,7 +111,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="(pt, idx) in trackings" :key="pt.id || idx">
+              <tr v-for="(pt, idx) in paginatedTrackings" :key="pt.id || idx">
                 <td style="font-weight: 600; color: #024ad8;">
                   {{ new Date(pt.recorded_at).toLocaleTimeString() }}
                 </td>
@@ -126,6 +139,32 @@
               </tr>
             </tbody>
           </table>
+
+          <!-- Paginación 20 en 20 para Puntos de Recorrido -->
+          <div v-if="trackings.length > 0" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-top: 1px solid var(--border-subtle); background: var(--bg-subtle);">
+            <span style="font-size: 0.85rem; color: var(--text-muted);">
+              Mostrando {{ (trackingPage - 1) * trackingPageSize + 1 }} - {{ Math.min(trackingPage * trackingPageSize, trackings.length) }} de {{ trackings.length }} puntos GPS
+            </span>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <button
+                class="btn btn-sm btn-secondary"
+                :disabled="trackingPage === 1"
+                @click="trackingPage--"
+              >
+                Anterior
+              </button>
+              <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-heading);">
+                Página {{ trackingPage }} de {{ totalTrackingPages }}
+              </span>
+              <button
+                class="btn btn-sm btn-secondary"
+                :disabled="trackingPage >= totalTrackingPages"
+                @click="trackingPage++"
+              >
+                Siguiente
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -172,7 +211,8 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
+import * as XLSX from 'xlsx'
 import api from '../services/api'
 
 const props = defineProps({ id: String })
@@ -182,6 +222,49 @@ const attendances = ref([])
 const trackings = ref([])
 const activities = ref([])
 const loading = ref(true)
+
+const trackingPage = ref(1)
+const trackingPageSize = 20
+
+const totalTrackingPages = computed(() => Math.ceil(trackings.value.length / trackingPageSize) || 1)
+
+const paginatedTrackings = computed(() => {
+  const start = (trackingPage.value - 1) * trackingPageSize
+  return trackings.value.slice(start, start + trackingPageSize)
+})
+
+function exportTrackingsToExcel() {
+  if (trackings.value.length === 0) {
+    alert('No hay puntos de geolocalización registrados para exportar en esta fecha.')
+    return
+  }
+
+  const exportData = trackings.value.map(pt => ({
+    'Fecha y Hora': new Date(pt.recorded_at).toLocaleString(),
+    'Latitud': pt.lat,
+    'Longitud': pt.lng,
+    'Precisión (m)': pt.accuracy || 5,
+    'Velocidad (km/h)': pt.speed || 0,
+    'Batería (%)': pt.battery_level || 90,
+    'Actividad Destino': pt.id_activity ? getActivityName(pt.id_activity) : 'Tránsito / Libre'
+  }))
+
+  const worksheet = XLSX.utils.json_to_sheet(exportData)
+  worksheet['!cols'] = [
+    { wch: 22 }, // Fecha y Hora
+    { wch: 15 }, // Latitud
+    { wch: 15 }, // Longitud
+    { wch: 14 }, // Precisión
+    { wch: 16 }, // Velocidad
+    { wch: 12 }, // Batería
+    { wch: 30 }  // Actividad
+  ]
+
+  const workbook = XLSX.utils.book_new()
+  const uname = user.value?.username || 'usuario'
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Puntos GPS')
+  XLSX.writeFile(workbook, `puntos_gps_${uname}_${trackingDate.value}.xlsx`)
+}
 
 function getTodayLocalDate() {
   const d = new Date()
@@ -271,6 +354,7 @@ async function updateRealTimeLocation(lat, lng) {
 }
 
 async function fetchTrackings() {
+  trackingPage.value = 1
   try {
     const { data } = await api.get('/trackings', {
       params: { id_user: props.id, fecha: trackingDate.value }
