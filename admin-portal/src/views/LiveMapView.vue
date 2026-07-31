@@ -278,7 +278,7 @@ function isUserActive(u) {
   const lastSeen = u.deviceDetail?.last_seen_at || u.last_seen_at
   if (!lastSeen) return false
   const diffMs = Date.now() - new Date(lastSeen).getTime()
-  return diffMs < 10 * 60 * 1000
+  return diffMs < 15 * 60 * 1000
 }
 
 function exportUsersToExcel() {

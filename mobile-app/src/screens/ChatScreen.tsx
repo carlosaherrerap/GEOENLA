@@ -168,7 +168,7 @@ export const ChatScreen: React.FC = () => {
     const lastSeen = user.deviceDetail?.last_seen_at || user.last_seen_at;
     if (!lastSeen) return false;
     const diffMs = Date.now() - new Date(lastSeen).getTime();
-    return diffMs < 10 * 60 * 1000;
+    return diffMs < 15 * 60 * 1000;
   };
 
   const processedChats = React.useMemo(() => {

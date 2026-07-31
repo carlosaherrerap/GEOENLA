@@ -820,7 +820,18 @@ protectedRoutes.get('/users/all', async (req: any, res) => {
       },
       orderBy: { username: 'asc' },
     });
-    res.json({ data: users });
+
+    const now = Date.now();
+    const mappedUsers = users.map((u: any) => {
+      const lastSeen = u.deviceDetail?.last_seen_at || u.last_seen_at;
+      const isAppActive = lastSeen ? (now - new Date(lastSeen).getTime()) < 15 * 60 * 1000 : false;
+      return {
+        ...u,
+        is_app_active: isAppActive,
+      };
+    });
+
+    res.json({ data: mappedUsers });
   } catch (err) {
     res.status(500).json({ message: 'Error obteniendo usuarios' });
   }
@@ -1023,7 +1034,18 @@ adminRoutes.get('/users', async (req, res) => {
       orderBy: { created_at: 'desc' },
       ...(takeParam ? { take: takeParam } : {}),
     });
-    res.json({ data: users });
+
+    const now = Date.now();
+    const mappedUsers = users.map((u: any) => {
+      const lastSeen = u.deviceDetail?.last_seen_at || u.last_seen_at;
+      const isAppActive = lastSeen ? (now - new Date(lastSeen).getTime()) < 15 * 60 * 1000 : false;
+      return {
+        ...u,
+        is_app_active: isAppActive,
+      };
+    });
+
+    res.json({ data: mappedUsers });
   } catch (err) {
     res.status(500).json({ message: 'Error cargando usuarios' });
   }
