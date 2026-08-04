@@ -1,8 +1,5 @@
 import express from 'express';
 import cors from 'cors';
-import { PrismaClient } from '@prisma/client';
-import { Pool } from 'pg';
-import { PrismaPg } from '@prisma/adapter-pg';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { spawn } from 'child_process';
@@ -10,6 +7,7 @@ import { uploadToR2 } from './r2Service';
 import { setLatestUserLocation, getLatestUserLocations } from './redisClient';
 import { initWhatsApp, getWhatsAppStatus, getWhatsAppQR, disconnectWhatsApp } from './services/whatsapp';
 import { startInactivityEngine } from './services/inactivityEngine';
+import { prisma } from './prismaClient';
 
 // Fix global BigInt JSON serialization in Express
 (BigInt.prototype as any).toJSON = function () {
@@ -25,12 +23,6 @@ const R2_CONFIG = {
 };
 
 const app = express();
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined,
-});
-const adapter = new PrismaPg(pool);
-const prisma = new PrismaClient({ adapter });
 const PORT = process.env.PORT || 8000;
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecretjwtkey';
 

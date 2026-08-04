@@ -1,4 +1,4 @@
-import { prisma } from '../index';
+import { prisma } from '../prismaClient';
 import { sendWhatsAppMessage } from './whatsapp';
 
 // Registro en memoria de avisos enviados en el día (se resetea a medianoche)

@@ -60,18 +60,33 @@ export async function initWhatsApp() {
 
       if (connection === 'close') {
         const statusCode = (lastDisconnect?.error as any)?.output?.statusCode;
-        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+        const isLoggedOut = statusCode === DisconnectReason.loggedOut;
+        // 405 = not-authorized: the saved auth session is corrupted/expired on WA servers.
+        // Clearing auth folder forces a fresh QR scan instead of reconnecting in an infinite loop.
+        const isInvalidSession = statusCode === 405;
 
-        console.log(`[Baileys Connection Closed] Status Code: ${statusCode}. Reconnecting: ${shouldReconnect}`);
+        console.log(`[Baileys Connection Closed] Status Code: ${statusCode}. LoggedOut: ${isLoggedOut}. InvalidSession: ${isInvalidSession}`);
         connectionStatus = 'DISCONNECTED';
         qrCodeDataUrl = null;
         sock = null;
         isInitializing = false;
 
-        if (shouldReconnect) {
+        if (isLoggedOut || isInvalidSession) {
+          // Wipe saved credentials so next connect() triggers a fresh QR scan
+          if (fs.existsSync(authFolder)) {
+            try {
+              fs.rmSync(authFolder, { recursive: true, force: true });
+              console.log('[Baileys] Auth folder eliminado. Se requerirá nuevo escaneo de QR.');
+            } catch (rmErr) {
+              console.error('[Baileys] Error eliminando auth folder:', rmErr);
+            }
+          }
+          // Do NOT auto-reconnect — wait for user to click "Conectar" again
+        } else {
+          // Transient network error: reconnect after delay
           setTimeout(() => {
             initWhatsApp();
-          }, 3000);
+          }, 5000);
         }
       } else if (connection === 'open') {
         console.log('[Baileys Connection Opened] WhatsApp Conectado Exitosamente.');
