@@ -28,9 +28,21 @@ export async function initWhatsApp() {
 
     const { state, saveCreds } = await useMultiFileAuthState(authFolder);
 
+    const silentLogger = {
+      level: 'silent',
+      child: () => silentLogger,
+      trace: () => {},
+      debug: () => {},
+      info: () => {},
+      warn: () => {},
+      error: () => {},
+      fatal: () => {},
+    };
+
     sock = makeWASocket({
       auth: state,
       printQRInTerminal: false,
+      logger: silentLogger as any,
     });
 
     sock.ev.on('creds.update', saveCreds);
