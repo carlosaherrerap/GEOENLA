@@ -70,9 +70,13 @@
             <i class="ph ph-qr-code" style="font-size: 2.5rem;"></i>
           </div>
           <h3 style="margin: 0 0 8px 0; font-size: 1.1rem; color: var(--text-heading);">WhatsApp no Conectado</h3>
-          <p style="color: var(--text-muted); font-size: 0.9rem; max-width: 380px; margin: 0 auto 24px auto;">
+          <p style="color: var(--text-muted); font-size: 0.9rem; max-width: 380px; margin: 0 auto 16px auto;">
             Inicia la conexión para generar un nuevo código QR y sincronizar la cuenta de envío de mensajes.
           </p>
+          <!-- Error del backend (timeout, sesión inválida, etc.) -->
+          <div v-if="backendError" style="background: rgba(225,29,72,0.08); border: 1px solid rgba(225,29,72,0.25); border-radius: 8px; padding: 10px 16px; margin: 0 auto 16px auto; max-width: 380px; font-size: 0.82rem; color: #e11d48; text-align: left;">
+            <i class="ph ph-warning-circle"></i> {{ backendError }}
+          </div>
           <button class="btn btn-primary" @click="connectWhatsApp" :disabled="loading">
             <i class="ph ph-plug"></i> Conectar / Generar QR
           </button>
@@ -131,11 +135,13 @@ const status = ref('DISCONNECTED')
 const qrImage = ref(null)
 const loading = ref(false)
 const generatingQR = ref(false)
+const backendError = ref(null)
 let pollTimer = null
 
 const statusBadgeClass = computed(() => {
   if (status.value === 'CONNECTED') return 'badge-success'
   if (qrImage.value || status.value === 'CONNECTING') return 'badge-warning'
+  if (backendError.value) return 'badge-danger'
   return 'badge-danger'
 })
 
@@ -154,11 +160,24 @@ async function fetchStatus() {
     } catch {
       res = await api.get('/admin/whatsapp/status')
     }
+    const prevStatus = status.value
     status.value = res.data.status
+
+    // Show backend error message (e.g. timeout, invalid session)
+    if (res.data.error) {
+      backendError.value = res.data.error
+    } else {
+      backendError.value = null
+    }
+
     if (res.data.hasQR) {
       await fetchQR()
       generatingQR.value = false
     } else if (status.value === 'CONNECTED') {
+      qrImage.value = null
+      generatingQR.value = false
+    } else if (status.value === 'DISCONNECTED' && prevStatus === 'CONNECTING') {
+      // Backend timed out or session failed — exit generating state
       qrImage.value = null
       generatingQR.value = false
     }
@@ -233,8 +252,10 @@ function startFastPoll() {
   pollTimer = setInterval(async () => {
     await fetchStatus()
     ticks++
-    // Volver al ritmo normal después de 20 intentos (30s) o si ya recibimos QR / conectamos
-    if (ticks >= 20 || status.value === 'CONNECTED' || qrImage.value) {
+    // Stop fast polling if: QR received, connected, backend returned error, or 45s elapsed
+    const done = status.value === 'CONNECTED' || qrImage.value ||
+                 status.value === 'DISCONNECTED' || ticks >= 30
+    if (done) {
       startNormalPoll()
     }
   }, 1500)
