@@ -11,11 +11,8 @@ const dailyNotifiedUsers = new Map<string, {
 }>();
 
 export function getTodayDateString(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  // Returns "YYYY-MM-DD" in America/Lima timezone
+  return new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Lima' });
 }
 
 // Websocket / SSE Emitter handler callback
@@ -29,11 +26,10 @@ export async function checkWorkerInactivityEngine() {
   const now = new Date();
   const todayStr = getTodayDateString();
 
-  // Hora de inicio obligatoria: 8:55 AM
-  const startShift = new Date();
-  startShift.setHours(8, 55, 0, 0);
+  // Hora de inicio obligatoria: 8:55 AM en Zona Horaria de Lima (UTC-5)
+  const startShift = new Date(`${todayStr}T08:55:00-05:00`);
 
-  // Si aún no son las 8:55 AM, no se aplican sanciones de inactividad
+  // Si aún no son las 8:55 AM (hora de Lima), no se aplican sanciones de inactividad
   if (now.getTime() < startShift.getTime()) {
     return;
   }
@@ -83,7 +79,9 @@ export async function checkWorkerInactivityEngine() {
         const msg5m = `Hola ${userName}, te saludamos del sistema GEOENLA (INEI). Te recordamos ingresar a la app y mantener encendida tu ubicación (GPS) para el registro correcto de tu jornada laboral. Si tienes algún inconveniente, puedes escribirnos por el Chat de la App.`;
         
         if (userPhone) {
-          await sendWhatsAppMessage(userPhone, msg5m);
+          console.log(`[Inactivity Engine] Intentando enviar WhatsApp (5m) a ${userName} (${userPhone})...`);
+          const sent = await sendWhatsAppMessage(userPhone, msg5m);
+          console.log(`[Inactivity Engine] WhatsApp (5m) enviado? ${sent}`);
         }
       }
 
@@ -96,7 +94,9 @@ export async function checkWorkerInactivityEngine() {
         const msg10m = `ATENCIÓN ${userName}: El sistema INEI detecta tu ubicación deshabilitada. Te recordamos que la inactividad sin justificación constituye una falta. RECUERDA: 3 faltas significan el despido de inmediato. Por favor, activa tu ubicación (GPS) en la app GEOENLA de inmediato. (Llamada de atención ${record.warningsCount}/3)`;
         
         if (userPhone) {
-          await sendWhatsAppMessage(userPhone, msg10m);
+          console.log(`[Inactivity Engine] Intentando enviar WhatsApp (10m) a ${userName} (${userPhone})...`);
+          const sent = await sendWhatsAppMessage(userPhone, msg10m);
+          console.log(`[Inactivity Engine] WhatsApp (10m) enviado? ${sent}`);
         }
 
         // Si acumula 3 llamadas de atención, inhabilitar la cuenta automáticamente
