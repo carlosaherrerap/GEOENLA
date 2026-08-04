@@ -1,0 +1,99 @@
+2026-08-04T19:53:17.276098626Z [Inactivity Engine] 20m de inactividad detectados para IVONNE MEDALIT INOCENTE. Disparando llamada automatizada...
+2026-08-04T19:53:17.276119506Z [Inactivity Engine] 20m de inactividad detectados para JOSE ULISES ROSILLO. Disparando llamada automatizada...
+2026-08-04T19:53:17.276146246Z [Inactivity Engine] 20m de inactividad detectados para LISSET PILAR ITURRIZAGA. Disparando llamada automatizada...
+2026-08-04T19:53:17.276157507Z [Inactivity Engine] 20m de inactividad detectados para JOSE LUIS FERNANDEZ. Disparando llamada automatizada...
+2026-08-04T19:53:17.276186237Z [Inactivity Engine] 20m de inactividad detectados para GINA LOURDES BUSTOS. Disparando llamada automatizada...
+2026-08-04T19:53:17.276191167Z [Inactivity Engine] 20m de inactividad detectados para JOSE VIDAL APAZA. Disparando llamada automatizada...
+2026-08-04T19:53:17.276199218Z [Inactivity Engine] 20m de inactividad detectados para MARYLIN ROSARIO MARQUEZ. Disparando llamada automatizada...
+2026-08-04T19:53:17.276226478Z [Inactivity Engine] 20m de inactividad detectados para VICTOR HUGO GUEVARA. Disparando llamada automatizada...
+2026-08-04T19:53:17.276230738Z [Inactivity Engine] 20m de inactividad detectados para JOSE MARTIN CHUQUIMANGO. Disparando llamada automatizada...
+2026-08-04T19:53:17.276233728Z [Inactivity Engine] 20m de inactividad detectados para ROSA MARIA MACO. Disparando llamada automatizada...
+2026-08-04T19:53:17.276241028Z [Inactivity Engine] 20m de inactividad detectados para LUIS ALBERTTO REMENTERIA. Disparando llamada automatizada...
+2026-08-04T19:53:17.276262959Z [Inactivity Engine] 20m de inactividad detectados para CARLOS ANDRES LINGAN. Disparando llamada automatizada...
+2026-08-04T19:53:17.276266359Z [Inactivity Engine] 20m de inactividad detectados para GIOVANA VILLACREZ. Disparando llamada automatizada...
+2026-08-04T19:53:17.276301469Z [Inactivity Engine] 20m de inactividad detectados para PERCY DANIEL SIHUAY. Disparando llamada automatizada...
+2026-08-04T19:53:17.276308269Z [Inactivity Engine] 20m de inactividad detectados para JUAN JOSE TORRES. Disparando llamada automatizada...
+2026-08-04T19:53:17.276311789Z [Inactivity Engine] 20m de inactividad detectados para LUIS ALBERTO TORRES. Disparando llamada automatizada...
+2026-08-04T19:53:17.27631962Z [Inactivity Engine] 20m de inactividad detectados para SILVIA FAUSTINA MARILYN MONROY. Disparando llamada automatizada...
+2026-08-04T19:53:17.27632262Z [Inactivity Engine] 20m de inactividad detectados para TANIA JANET ABAL. Disparando llamada automatizada...
+2026-08-04T19:53:17.27633508Z [Inactivity Engine] 20m de inactividad detectados para YULIANA PARRAGA. Disparando llamada automatizada...
+2026-08-04T19:53:17.276399861Z [Inactivity Engine] 20m de inactividad detectados para MARTHA CANDELARIA NAVARRETE. Disparando llamada automatizada...
+2026-08-04T19:53:17.276404081Z [Inactivity Engine] 20m de inactividad detectados para MARIA ELIZABETH DEL PILAR CASTILLO. Disparando llamada automatizada...
+2026-08-04T19:53:17.276406781Z [Inactivity Engine] 20m de inactividad detectados para Sarita a. Disparando llamada automatizada...
+2026-08-04T19:53:18.290166366Z [2026-08-04T19:53:18.290Z] POST /api/trackings
+2026-08-04T19:53:23.184041428Z [2026-08-04T19:53:23.183Z] GET /api/users
+2026-08-04T19:53:23.21093932Z [2026-08-04T19:53:23.210Z] GET /api/locations
+2026-08-04T19:53:28.532310849Z [2026-08-04T19:53:28.532Z] GET /api/users/a3dcb959-de3c-4636-9dcf-926c4c7332dd
+2026-08-04T19:53:28.540437122Z [2026-08-04T19:53:28.540Z] GET /api/activities
+2026-08-04T19:53:28.545719395Z [2026-08-04T19:53:28.545Z] GET /api/trackings?id_user=a3dcb959-de3c-4636-9dcf-926c4c7332dd&fecha=2026-08-04
+2026-08-04T19:53:29.139605103Z [2026-08-04T19:53:29.139Z] GET /api/attendances?id_user=a3dcb959-de3c-4636-9dcf-926c4c7332dd
+2026-08-04T19:53:29.486836084Z [2026-08-04T19:53:29.486Z] GET /api/attendances?id_user=a3dcb959-de3c-4636-9dcf-926c4c7332dd
+2026-08-04T19:53:29.924920599Z [2026-08-04T19:53:29.924Z] GET /api/users/a3dcb959-de3c-4636-9dcf-926c4c7332dd
+2026-08-04T19:53:30.013851699Z [2026-08-04T19:53:30.013Z] GET /api/activities
+2026-08-04T19:53:30.402232342Z [2026-08-04T19:53:30.401Z] GET /api/trackings?id_user=a3dcb959-de3c-4636-9dcf-926c4c7332dd&fecha=2026-08-04
+2026-08-04T19:53:34.829670758Z [2026-08-04T19:53:34.829Z] POST /api/device
+2026-08-04T19:53:34.837921073Z [2026-08-04T19:53:34.837Z] POST /api/device
+2026-08-04T19:53:34.840050901Z [2026-08-04T19:53:34.839Z] POST /api/device
+2026-08-04T19:53:34.84115291Z [2026-08-04T19:53:34.841Z] POST /api/device
+2026-08-04T19:53:34.842136927Z [2026-08-04T19:53:34.842Z] POST /api/device
+2026-08-04T19:53:35.141306115Z [2026-08-04T19:53:35.141Z] POST /api/device
+2026-08-04T19:53:35.18434368Z [2026-08-04T19:53:35.184Z] POST /api/device
+2026-08-04T19:53:35.279030401Z [2026-08-04T19:53:35.278Z] POST /api/device
+2026-08-04T19:53:35.492001477Z [2026-08-04T19:53:35.491Z] POST /api/device
+2026-08-04T19:53:39.298588671Z [2026-08-04T19:53:39.298Z] POST /api/trackings
+2026-08-04T19:53:40.461758006Z [2026-08-04T19:53:40.458Z] POST /api/trackings
+2026-08-04T19:53:59.334728308Z [2026-08-04T19:53:59.334Z] POST /api/trackings
+2026-08-04T19:54:10.328622194Z [2026-08-04T19:54:10.328Z] POST /api/trackings
+2026-08-04T19:54:10.400471135Z [2026-08-04T19:54:10.400Z] GET /api/whatsapp/status
+2026-08-04T19:54:10.432768091Z [2026-08-04T19:54:10.432Z] GET /api/whatsapp/status
+2026-08-04T19:54:17.269963454Z [Baileys Send Warning] WhatsApp no está conectado.
+2026-08-04T19:54:17.269964074Z [Inactivity Engine] 10m de inactividad detectados para ESTHER REBECA HUERTAS. Falta 1/3
+2026-08-04T19:54:32.237878099Z [2026-08-04T19:54:32.237Z] POST /api/trackings
+2026-08-04T19:54:35.078279506Z [2026-08-04T19:54:35.078Z] GET /api/whatsapp/status
+2026-08-04T19:54:35.600145249Z [2026-08-04T19:54:35.599Z] GET /api/whatsapp/status
+2026-08-04T19:54:37.252893976Z [2026-08-04T19:54:37.252Z] GET /api/whatsapp/status
+2026-08-04T19:54:37.761113819Z [2026-08-04T19:54:37.760Z] GET /api/whatsapp/status
+2026-08-04T19:54:39.103632845Z [2026-08-04T19:54:39.103Z] GET /api/whatsapp/status
+2026-08-04T19:54:41.432779594Z [2026-08-04T19:54:41.432Z] POST /api/trackings
+2026-08-04T19:54:42.602969467Z [2026-08-04T19:54:42.602Z] POST /api/whatsapp/connect
+2026-08-04T19:54:42.603795122Z [Baileys] Iniciando conexión. authFolder=/opt/render/project/src/backendGeo/baileys_auth
+2026-08-04T19:54:42.611256223Z [Baileys] Auth folder creado: /opt/render/project/src/backendGeo/baileys_auth
+2026-08-04T19:54:42.642974539Z [Baileys] Auth state cargado correctamente.
+2026-08-04T19:54:42.74223258Z [Baileys] connection.update → connection=connecting, hasQR=false
+2026-08-04T19:54:43.384402882Z [2026-08-04T19:54:43.384Z] GET /api/whatsapp/status
+2026-08-04T19:54:44.639727408Z [2026-08-04T19:54:44.639Z] GET /api/whatsapp/status
+2026-08-04T19:54:44.98479734Z [Baileys] connection.update → connection=close, hasQR=false
+2026-08-04T19:54:44.984819451Z [Baileys] Conexión cerrada. StatusCode=405 loggedOut=false invalidSession=true
+2026-08-04T19:54:44.986117293Z [Baileys] Auth folder eliminado. Presiona "Conectar" para generar nuevo QR.
+2026-08-04T19:54:45.959343442Z [2026-08-04T19:54:45.958Z] GET /api/whatsapp/status
+2026-08-04T19:54:48.175128562Z [2026-08-04T19:54:48.174Z] GET /api/whatsapp/status
+2026-08-04T19:54:50.289761638Z [2026-08-04T19:54:50.289Z] POST /api/whatsapp/connect
+2026-08-04T19:54:50.290305308Z [Baileys] Iniciando conexión. authFolder=/opt/render/project/src/backendGeo/baileys_auth
+2026-08-04T19:54:50.290560292Z [Baileys] Auth folder creado: /opt/render/project/src/backendGeo/baileys_auth
+2026-08-04T19:54:50.336520189Z [Baileys] Auth state cargado correctamente.
+2026-08-04T19:54:50.436438111Z [Baileys] connection.update → connection=connecting, hasQR=false
+2026-08-04T19:54:52.312770677Z [2026-08-04T19:54:52.312Z] GET /api/whatsapp/status
+2026-08-04T19:54:52.607842682Z [2026-08-04T19:54:52.607Z] GET /api/whatsapp/status
+2026-08-04T19:54:52.674072424Z [Baileys] connection.update → connection=close, hasQR=false
+2026-08-04T19:54:52.674098574Z [Baileys] Conexión cerrada. StatusCode=405 loggedOut=false invalidSession=true
+2026-08-04T19:54:52.674323748Z [Baileys] Auth folder eliminado. Presiona "Conectar" para generar nuevo QR.
+2026-08-04T19:54:53.642261684Z [2026-08-04T19:54:53.642Z] GET /api/whatsapp/status
+2026-08-04T19:54:54.27670469Z [2026-08-04T19:54:54.276Z] POST /api/trackings
+2026-08-04T19:54:56.252300727Z [2026-08-04T19:54:56.252Z] POST /api/whatsapp/connect
+2026-08-04T19:54:56.252742825Z [Baileys] Iniciando conexión. authFolder=/opt/render/project/src/backendGeo/baileys_auth
+2026-08-04T19:54:56.252938118Z [Baileys] Auth folder creado: /opt/render/project/src/backendGeo/baileys_auth
+2026-08-04T19:54:56.261872705Z [Baileys] Auth state cargado correctamente.
+2026-08-04T19:54:56.335602578Z [Baileys] connection.update → connection=connecting, hasQR=false
+2026-08-04T19:54:58.221793687Z [2026-08-04T19:54:58.221Z] GET /api/whatsapp/status
+2026-08-04T19:54:59.356079859Z [2026-08-04T19:54:59.355Z] GET /api/whatsapp/status
+2026-08-04T19:54:59.554899286Z [2026-08-04T19:54:59.554Z] GET /api/whatsapp/status
+2026-08-04T19:54:59.782535608Z [2026-08-04T19:54:59.782Z] POST /api/trackings
+2026-08-04T19:55:00.787730517Z [Baileys] connection.update → connection=close, hasQR=false
+2026-08-04T19:55:00.787751477Z [Baileys] Conexión cerrada. StatusCode=405 loggedOut=false invalidSession=true
+2026-08-04T19:55:00.787757237Z [Baileys] Auth folder eliminado. Presiona "Conectar" para generar nuevo QR.
+2026-08-04T19:55:01.034652107Z [2026-08-04T19:55:01.034Z] GET /api/whatsapp/status
+2026-08-04T19:55:04.189382942Z [2026-08-04T19:55:04.189Z] GET /api/whatsapp/status
+2026-08-04T19:55:06.430773239Z [2026-08-04T19:55:06.430Z] GET /api/whatsapp/status
+2026-08-04T19:55:08.17858919Z [2026-08-04T19:55:08.178Z] POST /api/trackings
+2026-08-04T19:55:09.351112402Z [2026-08-04T19:55:09.350Z] GET /api/whatsapp/status
+2026-08-04T19:55:11.204837811Z [2026-08-04T19:55:11.204Z] GET /api/whatsapp/status

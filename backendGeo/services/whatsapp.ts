@@ -2,6 +2,7 @@ import makeWASocket, {
   DisconnectReason,
   useMultiFileAuthState,
   Browsers,
+  fetchLatestBaileysVersion,
   WASocket,
 } from '@whiskeysockets/baileys';
 import QRCode from 'qrcode';
@@ -15,8 +16,7 @@ let lastError: string | null = null;
 let isInitializing = false;
 let qrTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
 
-// Use process.cwd() so the path is always relative to the project root,
-// regardless of where __dirname points under tsx/ts-node compilation.
+// Use process.cwd() so the path is always relative to the project root
 const authFolder = path.join(process.cwd(), 'baileys_auth');
 
 function clearQrTimeout() {
@@ -38,11 +38,11 @@ export async function initWhatsApp() {
 
   console.log(`[Baileys] Iniciando conexión. authFolder=${authFolder}`);
 
-  // Safety timeout: if no QR is emitted within 40s, reset so user can retry
+  // Safety timeout: if no QR is emitted within 45s, reset so user can retry
   clearQrTimeout();
   qrTimeoutHandle = setTimeout(() => {
     if (connectionStatus === 'CONNECTING' && !qrCodeDataUrl) {
-      console.warn('[Baileys] Timeout: No se recibió QR en 40s. Reiniciando estado...');
+      console.warn('[Baileys] Timeout: No se recibió QR en 45s. Reiniciando estado...');
       lastError = 'Timeout al generar QR. Intenta nuevamente.';
       connectionStatus = 'DISCONNECTED';
       isInitializing = false;
@@ -51,7 +51,7 @@ export async function initWhatsApp() {
         sock = null;
       }
     }
-  }, 40000);
+  }, 45000);
 
   try {
     if (!fs.existsSync(authFolder)) {
@@ -62,7 +62,17 @@ export async function initWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState(authFolder);
     console.log('[Baileys] Auth state cargado correctamente.');
 
-    // Minimal logger: only surface warn/error/fatal to console, suppress debug spam
+    // Fetch the latest WhatsApp Web version to prevent 405 handshake rejection
+    console.log('[Baileys] Obteniendo versión de WhatsApp Web más reciente...');
+    let waVersion: any = [2, 3000, 1017531287]; // Fallback seguro
+    try {
+      const { version, isLatest } = await fetchLatestBaileysVersion();
+      waVersion = version;
+      console.log(`[Baileys] Usando WhatsApp Web v${version.join('.')}, isLatest: ${isLatest}`);
+    } catch (verErr: any) {
+      console.warn('[Baileys] Error obteniendo versión web actual, usando fallback:', verErr?.message);
+    }
+
     const minimalLogger = {
       level: 'warn',
       child: () => minimalLogger,
@@ -75,10 +85,10 @@ export async function initWhatsApp() {
     };
 
     sock = makeWASocket({
+      version: waVersion,
       auth: state,
       printQRInTerminal: false,
       logger: minimalLogger as any,
-      // Use a standard browser fingerprint so WhatsApp servers accept the handshake
       browser: Browsers.ubuntu('Chrome'),
       connectTimeoutMs: 60000,
       defaultQueryTimeoutMs: undefined,
@@ -96,7 +106,7 @@ export async function initWhatsApp() {
         clearQrTimeout(); // QR received — cancel timeout
         try {
           qrCodeDataUrl = await QRCode.toDataURL(qr);
-          console.log('[Baileys] QR generado correctamente.');
+          console.log('[Baileys] QR generado e imagen dataURL creada.');
         } catch (qrErr) {
           console.error('[Baileys QR Error]', qrErr);
           lastError = 'Error al generar imagen QR.';
@@ -107,7 +117,6 @@ export async function initWhatsApp() {
         clearQrTimeout();
         const statusCode = (lastDisconnect?.error as any)?.output?.statusCode;
         const isLoggedOut = statusCode === DisconnectReason.loggedOut;
-        // 405 = not-authorized: saved auth session is invalid/expired on WA servers
         const isInvalidSession = statusCode === 405;
 
         console.log(`[Baileys] Conexión cerrada. StatusCode=${statusCode} loggedOut=${isLoggedOut} invalidSession=${isInvalidSession}`);
@@ -118,20 +127,17 @@ export async function initWhatsApp() {
         isInitializing = false;
 
         if (isLoggedOut || isInvalidSession) {
-          // Wipe saved credentials
           if (fs.existsSync(authFolder)) {
             try {
               fs.rmSync(authFolder, { recursive: true, force: true });
-              console.log('[Baileys] Auth folder eliminado. Presiona "Conectar" para generar nuevo QR.');
+              console.log('[Baileys] Auth folder eliminado.');
             } catch (rmErr) {
               console.error('[Baileys] Error eliminando auth folder:', rmErr);
             }
           }
-          // Stop — do NOT auto-retry. Admin must press "Conectar / Generar QR" to get a fresh QR.
-          lastError = `Sesión inválida (${statusCode}). Presiona "Conectar" para escanear un nuevo QR.`;
+          lastError = `Sesión inválida (${statusCode}). Por favor presiona "Conectar" para escanear un nuevo QR.`;
         } else {
-          // Transient network error: try to reconnect after delay
-          console.log('[Baileys] Error transitorio. Reconectando en 6s...');
+          console.log('[Baileys] Reconectando en 6 segundos...');
           setTimeout(() => { initWhatsApp(); }, 6000);
         }
       } else if (connection === 'open') {
@@ -171,7 +177,6 @@ export async function sendWhatsAppMessage(phoneNumber: string, message: string):
   }
 
   try {
-    // Sanitize Peruvian/international number (e.g. 987654321 → 51987654321@s.whatsapp.net)
     let cleanNumber = phoneNumber.replace(/\D/g, '');
     if (cleanNumber.length === 9) {
       cleanNumber = `51${cleanNumber}`;
@@ -200,5 +205,5 @@ export async function disconnectWhatsApp() {
   if (fs.existsSync(authFolder)) {
     fs.rmSync(authFolder, { recursive: true, force: true });
   }
-  console.log('[Baileys] Desconectado y auth folder eliminado.');
+  console.log('[Baileys] Desconectado y credenciales eliminadas.');
 }

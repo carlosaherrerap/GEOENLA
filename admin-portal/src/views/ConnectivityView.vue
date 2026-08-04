@@ -2,7 +2,7 @@
   <div class="connectivity-container">
     <div class="page-header">
       <div>
-        <h1 class="page-title">Conectividad WhatsApp Baileys</h1>
+        <h1 class="page-title">Conectividad WhatsApp</h1>
         <p class="page-subtitle">Vinculación de WhatsApp para notificaciones automáticas y alertas de inactividad</p>
       </div>
       <div style="display: flex; gap: 10px;">
@@ -163,7 +163,6 @@ async function fetchStatus() {
     const prevStatus = status.value
     status.value = res.data.status
 
-    // Show backend error message (e.g. timeout, invalid session)
     if (res.data.error) {
       backendError.value = res.data.error
     } else {
@@ -177,7 +176,6 @@ async function fetchStatus() {
       qrImage.value = null
       generatingQR.value = false
     } else if (status.value === 'DISCONNECTED' && prevStatus === 'CONNECTING') {
-      // Backend timed out or session failed — exit generating state
       qrImage.value = null
       generatingQR.value = false
     }
@@ -223,7 +221,6 @@ async function connectWhatsApp() {
     loading.value = false
   }
 
-  // Baileys tarda ~2-3s en generar el QR — empezamos polling rápido cada 1.5s
   startFastPoll()
 }
 
@@ -252,7 +249,6 @@ function startFastPoll() {
   pollTimer = setInterval(async () => {
     await fetchStatus()
     ticks++
-    // Stop fast polling if: QR received, connected, backend returned error, or 45s elapsed
     const done = status.value === 'CONNECTED' || qrImage.value ||
                  status.value === 'DISCONNECTED' || ticks >= 30
     if (done) {

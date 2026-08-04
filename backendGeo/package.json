@@ -15,7 +15,7 @@
     "@aws-sdk/client-s3": "^3.1097.0",
     "@prisma/adapter-pg": "^7.9.0",
     "@prisma/client": "^7.9.0",
-    "@whiskeysockets/baileys": "^6.7.22",
+    "@whiskeysockets/baileys": "^6.17.16",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
