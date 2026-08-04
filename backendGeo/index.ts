@@ -154,7 +154,7 @@ app.post('/api/login', async (req, res) => {
       where: { id_user: user.id },
       update: { last_seen_at: new Date() },
       create: { id_user: user.id, last_seen_at: new Date() },
-    }).catch(() => {});
+    }).catch(() => { });
 
     res.json({
       message: 'Login exitoso.',
@@ -184,7 +184,7 @@ protectedRoutes.post('/logout', async (req: any, res) => {
     await prisma.device_details.updateMany({
       where: { id_user: req.user.id },
       data: { last_seen_at: null },
-    }).catch(() => {});
+    }).catch(() => { });
   }
   res.json({ message: 'Sesión cerrada exitosamente.' });
 });
@@ -197,7 +197,7 @@ protectedRoutes.get('/activities', async (req: any, res) => {
   if (req.user.rol === 'usuario') {
     const routes = await prisma.routes.findMany({ where: { id_user: req.user.id }, select: { id_sede: true } });
     const locationIds = routes.map(r => r.id_sede);
-    
+
     // Buscar también si req.user.id_supervisor existe
     const userDb = await prisma.users.findUnique({ where: { id: req.user.id }, select: { id_supervisor: true } });
     const userSuperId = userDb?.id_supervisor;
@@ -589,7 +589,7 @@ protectedRoutes.post('/trackings', async (req: any, res) => {
     where: { id_user: req.user.id },
     update: { last_seen_at: serverNow },
     create: { id_user: req.user.id, last_seen_at: serverNow },
-  }).catch(() => {});
+  }).catch(() => { });
 
   res.status(201).json({
     message: 'Punto registrado.',
@@ -646,14 +646,14 @@ const handleBatchTrackingSync = async (req: any, res: any) => {
       battery_level: lastPoint.battery_level,
       id_activity: lastPoint.id_activity,
       recorded_at: lastPoint.recorded_at.toISOString(),
-    }).catch(() => {});
+    }).catch(() => { });
 
     // Actualizar estado del dispositivo a ACTIVO
     await prisma.device_details.upsert({
       where: { id_user: req.user.id },
       update: { last_seen_at: new Date() },
       create: { id_user: req.user.id, last_seen_at: new Date() },
-    }).catch(() => {});
+    }).catch(() => { });
 
     console.log(`[SyncBatch] ${mappedPoints.length} puntos offline sincronizados para usuario ${req.user.username || req.user.id}`);
 
@@ -1112,7 +1112,7 @@ adminRoutes.post('/users', async (req: any, res: any) => {
       const tipoShift = turno_tipo || 'DIURNO';
       const ingStr = turno_ingreso || '08:00';
       const salStr = turno_salida || '17:00';
-      
+
       const ingDate = new Date(`1970-01-01T${ingStr}:00Z`);
       const salDate = new Date(`1970-01-01T${salStr}:00Z`);
 
@@ -1579,7 +1579,7 @@ const runAutoSeed = async () => {
           });
           console.log('[AutoFix] Actividad a390a2d6 asignada correctamente al usuario 74c85de6.');
         }
-      } catch (_fixErr) {}
+      } catch (_fixErr) { }
 
       return; // Éxito, salimos del bucle
     } catch (err) {
@@ -1592,7 +1592,7 @@ const runAutoSeed = async () => {
 };
 
 runAutoSeed().then(() => {
-  initWhatsApp().catch(() => {});
+  initWhatsApp().catch(() => { });
   startInactivityEngine();
   app.listen(Number(PORT), '0.0.0.0', () => {
     console.log(`Express server running on http://0.0.0.0:${PORT}`);
