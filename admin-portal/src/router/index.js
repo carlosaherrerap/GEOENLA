@@ -51,6 +51,11 @@ const routes = [
         name: 'Chat',
         component: () => import('../views/ChatView.vue'),
       },
+      {
+        path: 'connectivity',
+        name: 'Connectivity',
+        component: () => import('../views/ConnectivityView.vue'),
+      },
     ]
   },
   {

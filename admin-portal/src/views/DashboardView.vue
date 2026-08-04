@@ -20,6 +20,9 @@
         <router-link to="/chat" class="nav-item">
           <i class="ph ph-chat-circle-dots" style="font-size: 1.2rem;"></i> <span>Chat en Vivo</span>
         </router-link>
+        <router-link to="/connectivity" class="nav-item">
+          <i class="ph ph-whatsapp-logo" style="font-size: 1.2rem; color: #25D366;"></i> <span>Conectividad</span>
+        </router-link>
       </nav>
       <div style="padding: 16px; border-top: 1px solid rgba(255, 255, 255, 0.15); background-color: transparent; color: #ffffff;">
         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">

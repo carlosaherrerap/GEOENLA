@@ -8,6 +8,8 @@ import jwt from 'jsonwebtoken';
 import { spawn } from 'child_process';
 import { uploadToR2 } from './r2Service';
 import { setLatestUserLocation, getLatestUserLocations } from './redisClient';
+import { initWhatsApp, getWhatsAppStatus, getWhatsAppQR, disconnectWhatsApp } from './services/whatsapp';
+import { startInactivityEngine } from './services/inactivityEngine';
 
 // Fix global BigInt JSON serialization in Express
 (BigInt.prototype as any).toJSON = function () {
@@ -550,7 +552,16 @@ protectedRoutes.get('/attendances', async (req: any, res) => {
 // Trackings
 protectedRoutes.post('/trackings', async (req: any, res) => {
   const { id_activity, lat, lng, accuracy, speed, battery_level, recorded_at } = req.body;
-  const recordedDate = recorded_at ? new Date(recorded_at) : new Date();
+  const serverNow = new Date();
+
+  // Prevenir manipulación de reloj del teléfono o VPN: si la hora del cliente difiere > 5 min del servidor, usar hora real del servidor
+  let recordedDate = serverNow;
+  if (recorded_at) {
+    const clientDate = new Date(recorded_at);
+    if (!isNaN(clientDate.getTime()) && Math.abs(serverNow.getTime() - clientDate.getTime()) < 5 * 60 * 1000) {
+      recordedDate = clientDate;
+    }
+  }
 
   const tracking = await prisma.trackings.create({
     data: {
@@ -576,8 +587,8 @@ protectedRoutes.post('/trackings', async (req: any, res) => {
   // Update device_details last_seen_at for ACTIVO status
   await prisma.device_details.upsert({
     where: { id_user: req.user.id },
-    update: { last_seen_at: new Date() },
-    create: { id_user: req.user.id, last_seen_at: new Date() },
+    update: { last_seen_at: serverNow },
+    create: { id_user: req.user.id, last_seen_at: serverNow },
   }).catch(() => {});
 
   res.status(201).json({
@@ -593,7 +604,9 @@ const handleBatchTrackingSync = async (req: any, res: any) => {
       return res.status(200).json({ message: 'Sin puntos para sincronizar.', count: 0 });
     }
 
-    // Ordenar cronológicamente por timestamp (recorded_at) para preservar el timeline perfecto 1 -> 2 -> 3
+    const serverNow = new Date();
+
+    // Ordenar cronológicamente por timestamp (recorded_at) y sanitizar con hora servidor si es futura
     const sortedPoints = rawPoints
       .filter((p: any) => p && (p.lat !== undefined || p.payload?.lat !== undefined))
       .map((p: any) => p.payload ? { ...p.payload, recorded_at: p.recorded_at || p.payload.recorded_at } : p)
@@ -603,17 +616,23 @@ const handleBatchTrackingSync = async (req: any, res: any) => {
       return res.status(200).json({ message: 'Sin puntos válidos para sincronizar.', count: 0 });
     }
 
-    const mappedPoints = sortedPoints.map((p: any) => ({
-      id_user: req.user.id,
-      id_activity: p.id_activity || null,
-      lat: Number(p.lat),
-      lng: Number(p.lng),
-      accuracy: p.accuracy ? Number(p.accuracy) : null,
-      speed: p.speed ? Number(p.speed) : null,
-      battery_level: p.battery_level ? Number(p.battery_level) : null,
-      recorded_at: p.recorded_at ? new Date(p.recorded_at) : (p.timestamp ? new Date(p.timestamp) : new Date()),
-      is_synced: true,
-    }));
+    const mappedPoints = sortedPoints.map((p: any) => {
+      let ptDate = p.recorded_at ? new Date(p.recorded_at) : (p.timestamp ? new Date(p.timestamp) : serverNow);
+      if (isNaN(ptDate.getTime()) || ptDate.getTime() > serverNow.getTime() + 60000) {
+        ptDate = serverNow;
+      }
+      return {
+        id_user: req.user.id,
+        id_activity: p.id_activity || null,
+        lat: Number(p.lat),
+        lng: Number(p.lng),
+        accuracy: p.accuracy ? Number(p.accuracy) : null,
+        speed: p.speed ? Number(p.speed) : null,
+        battery_level: p.battery_level ? Number(p.battery_level) : null,
+        recorded_at: ptDate,
+        is_synced: true,
+      };
+    });
 
     await prisma.trackings.createMany({ data: mappedPoints });
 
@@ -1223,6 +1242,26 @@ adminRoutes.post('/locations', async (req: any, res: any) => {
   }
 });
 
+// Endpoints de Conectividad WhatsApp Baileys
+adminRoutes.get('/whatsapp/status', (req, res) => {
+  res.json(getWhatsAppStatus());
+});
+
+adminRoutes.get('/whatsapp/qr', (req, res) => {
+  const qr = getWhatsAppQR();
+  res.json({ qr });
+});
+
+adminRoutes.post('/whatsapp/connect', async (req, res) => {
+  await initWhatsApp();
+  res.json({ message: 'Iniciando conexión de WhatsApp...' });
+});
+
+adminRoutes.post('/whatsapp/disconnect', async (req, res) => {
+  await disconnectWhatsApp();
+  res.json({ message: 'WhatsApp desconectado correctamente.' });
+});
+
 // Server Date
 app.get('/api/server-date', (req, res) => {
   const now = new Date();
@@ -1544,6 +1583,8 @@ const runAutoSeed = async () => {
 };
 
 runAutoSeed().then(() => {
+  initWhatsApp().catch(() => {});
+  startInactivityEngine();
   app.listen(Number(PORT), '0.0.0.0', () => {
     console.log(`Express server running on http://0.0.0.0:${PORT}`);
   });
