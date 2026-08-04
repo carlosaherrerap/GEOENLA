@@ -53,6 +53,18 @@
           </div>
         </div>
 
+        <!-- Generando QR: spinner de espera -->
+        <div v-else-if="generatingQR" style="text-align: center; padding: 32px 16px;">
+          <div style="width: 70px; height: 70px; border-radius: 50%; background: rgba(2, 74, 216, 0.1); color: var(--primary-color); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px auto;">
+            <i class="ph ph-spinner" style="font-size: 2.5rem; animation: spin 1s linear infinite;"></i>
+          </div>
+          <h3 style="margin: 0 0 8px 0; font-size: 1.1rem; color: var(--text-heading);">Generando Código QR...</h3>
+          <p style="color: var(--text-muted); font-size: 0.85rem; max-width: 380px; margin: 0 auto;">
+            Espera unos segundos mientras Baileys inicializa la sesión.
+          </p>
+        </div>
+
+        <!-- Sin conexión: botón conectar -->
         <div v-else style="text-align: center; padding: 32px 16px;">
           <div style="width: 70px; height: 70px; border-radius: 50%; background: var(--bg-hover); color: var(--text-muted); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px auto;">
             <i class="ph ph-qr-code" style="font-size: 2.5rem;"></i>
@@ -65,6 +77,7 @@
             <i class="ph ph-plug"></i> Conectar / Generar QR
           </button>
         </div>
+
       </div>
 
       <!-- Tarjeta de Reglas del Motor de Inactividad -->
@@ -117,6 +130,7 @@ import api from '../services/api'
 const status = ref('DISCONNECTED')
 const qrImage = ref(null)
 const loading = ref(false)
+const generatingQR = ref(false)
 let pollTimer = null
 
 const statusBadgeClass = computed(() => {
@@ -128,7 +142,7 @@ const statusBadgeClass = computed(() => {
 const statusText = computed(() => {
   if (status.value === 'CONNECTED') return 'CONECTADO'
   if (qrImage.value) return 'ESPERANDO ESCANEO QR'
-  if (status.value === 'CONNECTING') return 'CONECTANDO...'
+  if (generatingQR.value || status.value === 'CONNECTING') return 'GENERANDO QR...'
   return 'DESCONECTADO'
 })
 
@@ -143,8 +157,10 @@ async function fetchStatus() {
     status.value = res.data.status
     if (res.data.hasQR) {
       await fetchQR()
-    } else {
+      generatingQR.value = false
+    } else if (status.value === 'CONNECTED') {
       qrImage.value = null
+      generatingQR.value = false
     }
   } catch (err) {
     console.error('Error cargando estado WhatsApp:', err)
@@ -159,7 +175,10 @@ async function fetchQR() {
     } catch {
       res = await api.get('/admin/whatsapp/qr')
     }
-    qrImage.value = res.data.qr
+    if (res.data.qr) {
+      qrImage.value = res.data.qr
+      generatingQR.value = false
+    }
   } catch (err) {
     console.error('Error cargando QR WhatsApp:', err)
   }
@@ -167,23 +186,31 @@ async function fetchQR() {
 
 async function connectWhatsApp() {
   loading.value = true
+  generatingQR.value = true
+  status.value = 'CONNECTING'
+  qrImage.value = null
+
   try {
     try {
       await api.post('/whatsapp/connect')
     } catch {
       await api.post('/admin/whatsapp/connect')
     }
-    await fetchStatus()
-    await fetchQR()
   } catch (err) {
     console.error('Error conectando WhatsApp:', err)
+    status.value = 'DISCONNECTED'
+    generatingQR.value = false
   } finally {
     loading.value = false
   }
+
+  // Baileys tarda ~2-3s en generar el QR — empezamos polling rápido cada 1.5s
+  startFastPoll()
 }
 
 async function disconnectWhatsApp() {
   loading.value = true
+  generatingQR.value = false
   try {
     try {
       await api.post('/whatsapp/disconnect')
@@ -197,13 +224,30 @@ async function disconnectWhatsApp() {
   } finally {
     loading.value = false
   }
+  startNormalPoll()
+}
+
+function startFastPoll() {
+  if (pollTimer) clearInterval(pollTimer)
+  let ticks = 0
+  pollTimer = setInterval(async () => {
+    await fetchStatus()
+    ticks++
+    // Volver al ritmo normal después de 20 intentos (30s) o si ya recibimos QR / conectamos
+    if (ticks >= 20 || status.value === 'CONNECTED' || qrImage.value) {
+      startNormalPoll()
+    }
+  }, 1500)
+}
+
+function startNormalPoll() {
+  if (pollTimer) clearInterval(pollTimer)
+  pollTimer = setInterval(fetchStatus, 5000)
 }
 
 onMounted(() => {
   fetchStatus()
-  pollTimer = setInterval(() => {
-    fetchStatus()
-  }, 4000)
+  startNormalPoll()
 })
 
 onUnmounted(() => {
@@ -289,5 +333,10 @@ onUnmounted(() => {
 .step-20m {
   background: rgba(225, 29, 72, 0.15);
   color: #e11d48;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 </style>
