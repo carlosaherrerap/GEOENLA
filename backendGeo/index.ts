@@ -1584,7 +1584,23 @@ const runAutoSeed = async () => {
 };
 
 runAutoSeed().then(() => {
-  initWhatsApp().catch(() => { });
+  // Only auto-connect WhatsApp if there is already a saved session.
+  // If no QR has ever been scanned, do nothing — wait for admin to press "Conectar".
+  const hasSavedSession = (() => {
+    try {
+      const authDir = require('path').join(process.cwd(), 'baileys_auth');
+      const { existsSync, readdirSync } = require('fs');
+      return existsSync(authDir) && readdirSync(authDir).length > 0;
+    } catch { return false; }
+  })();
+
+  if (hasSavedSession) {
+    console.log('[WhatsApp] Sesión guardada detectada. Reconectando automáticamente...');
+    initWhatsApp().catch(() => { });
+  } else {
+    console.log('[WhatsApp] Sin sesión guardada. Esperando que el admin presione "Conectar / Generar QR".');
+  }
+
   startInactivityEngine();
   app.listen(Number(PORT), '0.0.0.0', () => {
     console.log(`Express server running on http://0.0.0.0:${PORT}`);

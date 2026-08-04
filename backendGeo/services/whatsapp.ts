@@ -118,18 +118,17 @@ export async function initWhatsApp() {
         isInitializing = false;
 
         if (isLoggedOut || isInvalidSession) {
-          // Wipe saved credentials so next attempt generates a fresh QR
+          // Wipe saved credentials
           if (fs.existsSync(authFolder)) {
             try {
               fs.rmSync(authFolder, { recursive: true, force: true });
-              console.log('[Baileys] Auth folder eliminado. Reintentando para generar nuevo QR...');
+              console.log('[Baileys] Auth folder eliminado. Presiona "Conectar" para generar nuevo QR.');
             } catch (rmErr) {
               console.error('[Baileys] Error eliminando auth folder:', rmErr);
             }
           }
-          // Auto-reinitialize after a short delay so a fresh QR is shown without user interaction
-          lastError = null;
-          setTimeout(() => { initWhatsApp(); }, 3000);
+          // Stop — do NOT auto-retry. Admin must press "Conectar / Generar QR" to get a fresh QR.
+          lastError = `Sesión inválida (${statusCode}). Presiona "Conectar" para escanear un nuevo QR.`;
         } else {
           // Transient network error: try to reconnect after delay
           console.log('[Baileys] Error transitorio. Reconectando en 6s...');
