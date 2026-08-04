@@ -1,6 +1,7 @@
 import makeWASocket, {
   DisconnectReason,
   useMultiFileAuthState,
+  Browsers,
   WASocket,
 } from '@whiskeysockets/baileys';
 import QRCode from 'qrcode';
@@ -77,6 +78,11 @@ export async function initWhatsApp() {
       auth: state,
       printQRInTerminal: false,
       logger: minimalLogger as any,
+      // Use a standard browser fingerprint so WhatsApp servers accept the handshake
+      browser: Browsers.ubuntu('Chrome'),
+      connectTimeoutMs: 60000,
+      defaultQueryTimeoutMs: undefined,
+      keepAliveIntervalMs: 30000,
     });
 
     sock.ev.on('creds.update', saveCreds);
@@ -112,17 +118,18 @@ export async function initWhatsApp() {
         isInitializing = false;
 
         if (isLoggedOut || isInvalidSession) {
-          lastError = `Sesión inválida (${statusCode}). Escanea un nuevo QR.`;
-          // Wipe saved credentials so next connect() triggers fresh QR
+          // Wipe saved credentials so next attempt generates a fresh QR
           if (fs.existsSync(authFolder)) {
             try {
               fs.rmSync(authFolder, { recursive: true, force: true });
-              console.log('[Baileys] Auth folder eliminado. Se requiere nuevo QR.');
+              console.log('[Baileys] Auth folder eliminado. Reintentando para generar nuevo QR...');
             } catch (rmErr) {
               console.error('[Baileys] Error eliminando auth folder:', rmErr);
             }
           }
-          // Do NOT auto-reconnect — wait for admin to click "Conectar" again
+          // Auto-reinitialize after a short delay so a fresh QR is shown without user interaction
+          lastError = null;
+          setTimeout(() => { initWhatsApp(); }, 3000);
         } else {
           // Transient network error: try to reconnect after delay
           console.log('[Baileys] Error transitorio. Reconectando en 6s...');
