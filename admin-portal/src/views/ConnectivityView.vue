@@ -134,9 +134,14 @@ const statusText = computed(() => {
 
 async function fetchStatus() {
   try {
-    const { data } = await api.get('/admin/whatsapp/status')
-    status.value = data.status
-    if (data.hasQR) {
+    let res
+    try {
+      res = await api.get('/whatsapp/status')
+    } catch {
+      res = await api.get('/admin/whatsapp/status')
+    }
+    status.value = res.data.status
+    if (res.data.hasQR) {
       await fetchQR()
     } else {
       qrImage.value = null
@@ -148,8 +153,13 @@ async function fetchStatus() {
 
 async function fetchQR() {
   try {
-    const { data } = await api.get('/admin/whatsapp/qr')
-    qrImage.value = data.qr
+    let res
+    try {
+      res = await api.get('/whatsapp/qr')
+    } catch {
+      res = await api.get('/admin/whatsapp/qr')
+    }
+    qrImage.value = res.data.qr
   } catch (err) {
     console.error('Error cargando QR WhatsApp:', err)
   }
@@ -158,7 +168,11 @@ async function fetchQR() {
 async function connectWhatsApp() {
   loading.value = true
   try {
-    await api.post('/admin/whatsapp/connect')
+    try {
+      await api.post('/whatsapp/connect')
+    } catch {
+      await api.post('/admin/whatsapp/connect')
+    }
     await fetchStatus()
     await fetchQR()
   } catch (err) {
@@ -171,7 +185,11 @@ async function connectWhatsApp() {
 async function disconnectWhatsApp() {
   loading.value = true
   try {
-    await api.post('/admin/whatsapp/disconnect')
+    try {
+      await api.post('/whatsapp/disconnect')
+    } catch {
+      await api.post('/admin/whatsapp/disconnect')
+    }
     status.value = 'DISCONNECTED'
     qrImage.value = null
   } catch (err) {

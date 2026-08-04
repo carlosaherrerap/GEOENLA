@@ -1243,24 +1243,33 @@ adminRoutes.post('/locations', async (req: any, res: any) => {
 });
 
 // Endpoints de Conectividad WhatsApp Baileys
-adminRoutes.get('/whatsapp/status', (req, res) => {
+const handleWhatsAppStatus = (req: any, res: any) => {
   res.json(getWhatsAppStatus());
-});
-
-adminRoutes.get('/whatsapp/qr', (req, res) => {
+};
+const handleWhatsAppQR = (req: any, res: any) => {
   const qr = getWhatsAppQR();
   res.json({ qr });
-});
-
-adminRoutes.post('/whatsapp/connect', async (req, res) => {
+};
+const handleWhatsAppConnect = async (req: any, res: any) => {
   await initWhatsApp();
   res.json({ message: 'Iniciando conexión de WhatsApp...' });
-});
-
-adminRoutes.post('/whatsapp/disconnect', async (req, res) => {
+};
+const handleWhatsAppDisconnect = async (req: any, res: any) => {
   await disconnectWhatsApp();
   res.json({ message: 'WhatsApp desconectado correctamente.' });
-});
+};
+
+adminRoutes.get('/whatsapp/status', handleWhatsAppStatus);
+adminRoutes.get('/admin/whatsapp/status', handleWhatsAppStatus);
+
+adminRoutes.get('/whatsapp/qr', handleWhatsAppQR);
+adminRoutes.get('/admin/whatsapp/qr', handleWhatsAppQR);
+
+adminRoutes.post('/whatsapp/connect', handleWhatsAppConnect);
+adminRoutes.post('/admin/whatsapp/connect', handleWhatsAppConnect);
+
+adminRoutes.post('/whatsapp/disconnect', handleWhatsAppDisconnect);
+adminRoutes.post('/admin/whatsapp/disconnect', handleWhatsAppDisconnect);
 
 // Server Date
 app.get('/api/server-date', (req, res) => {
