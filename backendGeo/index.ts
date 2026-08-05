@@ -1,3 +1,5 @@
+import 'dotenv/config';
+
 import express from 'express';
 import cors from 'cors';
 import bcrypt from 'bcryptjs';
@@ -124,8 +126,8 @@ const authMiddleware = (req: any, res: any, next: any) => {
 };
 
 const adminMiddleware = (req: any, res: any, next: any) => {
-  if (req.user?.rol !== 'admin') {
-    return res.status(403).json({ message: 'Acceso denegado. Requiere rol de administrador.' });
+  if (req.user?.rol !== 'admin' && req.user?.rol !== 'su') {
+    return res.status(403).json({ message: 'Acceso denegado. Requiere rol de administrador o superusuario.' });
   }
   next();
 };
@@ -1845,6 +1847,7 @@ const runAutoSeed = async () => {
       try {
         await prisma.users.count();
       } catch (tableErr: any) {
+        console.error('[DATABASE INITIAL CHECK ERROR]:', tableErr);
         console.log('=================================');
         console.log('Tablas no encontradas en DB. Creando estructura con npx prisma db push...');
         await new Promise((resolve) => {
