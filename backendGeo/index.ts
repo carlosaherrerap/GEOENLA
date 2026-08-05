@@ -223,24 +223,6 @@ app.post('/api/login', async (req, res) => {
       create: { id_user: user.id, last_seen_at: new Date() },
     }).catch(() => { });
 
-    // Programar llamada de prueba por WebSockets exactamente 1 minuto después de iniciar sesión
-    setTimeout(() => {
-      const ws = connectedClients.get(user.id);
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        const payload = {
-          type: 'AUTOMATED_CALL',
-          message: `Llamada de prueba: Hola ${user.username}, esta es una simulación de llamada de advertencia de inactividad de GEOENLA.`,
-          ringtoneUrl: '/audio/november.mp3',
-          audioUrl: '/audio/bicecly.mp3',
-          autoHangupMs: 25000,
-        };
-        ws.send(JSON.stringify(payload));
-        console.log(`[WebSocket] Llamada de prueba de 1 minuto enviada a usuario ${user.username} (${user.id}).`);
-      } else {
-        console.log(`[WebSocket] No se pudo realizar llamada de prueba a ${user.username} (WebSocket no conectado).`);
-      }
-    }, 60000);
-
     res.json({
       message: 'Login exitoso.',
       user: { id: user.id, username: user.username, correo: user.correo, rol: user.rol, estado: user.estado },

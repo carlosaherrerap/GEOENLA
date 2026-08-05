@@ -85,12 +85,44 @@ export async function checkWorkerInactivityEngine() {
       }
 
       // Determinar la última señal recibida (last_seen_at)
-      const lastSeen = u.deviceDetail?.last_seen_at || u.created_at || startShift;
-      const lastSeenDate = new Date(lastSeen);
+      let lastSeen = u.deviceDetail?.last_seen_at || u.created_at || startShift;
+      let lastSeenDate = new Date(lastSeen);
 
       // La referencia de inicio de conteo es la última señal o las 8:55 AM (lo que sea más reciente)
-      const effectiveBaseline = lastSeenDate.getTime() < startShift.getTime() ? startShift : lastSeenDate;
-      const inactiveMinutes = Math.floor((now.getTime() - effectiveBaseline.getTime()) / (60 * 1000));
+      let effectiveBaseline = lastSeenDate.getTime() < startShift.getTime() ? startShift : lastSeenDate;
+      let inactiveMinutes = Math.floor((now.getTime() - effectiveBaseline.getTime()) / (60 * 1000));
+
+      // --- VERIFICACIÓN DE UBICACIÓN EN VIVO PREVIA A NOTIFICACIÓN O LLAMADA ---
+      if (inactiveMinutes >= 5) {
+        // 1. Enviar solicitud de ping de ubicación por WebSocket al cliente si tiene sesión activa
+        if (callEmitter) {
+          callEmitter(u.id, { type: 'REQUEST_LOCATION_PING' });
+        }
+
+        // 2. Verificar la última posición/señal en device_details y trackings
+        const latestDevice = await prisma.device_details.findUnique({ where: { id_user: u.id } });
+        const latestTracking = await prisma.trackings.findFirst({
+          where: { id_user: u.id },
+          orderBy: { recorded_at: 'desc' }
+        });
+
+        const latestSignalMs = Math.max(
+          latestDevice?.last_seen_at ? new Date(latestDevice.last_seen_at).getTime() : 0,
+          latestTracking?.recorded_at ? new Date(latestTracking.recorded_at).getTime() : 0
+        );
+
+        if (latestSignalMs > 0) {
+          const signalAgeMinutes = (now.getTime() - latestSignalMs) / (60 * 1000);
+          if (signalAgeMinutes < 5) {
+            // Se logró verificar la ubicación activa del supervisor
+            record.sent5m = false;
+            record.sent10m = false;
+            record.sent20m = false;
+            console.log(`[Inactivity Engine] Ubicación activa verificada para ${userName} (${u.id}). Estado de supervisor actualizado a ACTIVO. Se omiten avisos de inactividad.`);
+            continue;
+          }
+        }
+      }
 
       // Buscar administrador de la misma sede regional que tenga WhatsApp conectado
       const activeAdmin = admins.find((adm) => {
@@ -180,8 +212,9 @@ export async function checkWorkerInactivityEngine() {
           callEmitter(u.id, {
             type: 'AUTOMATED_CALL',
             message: 'Comunícate de inmediato con tu área para justificar tu inactividad o se tomará como falta de la jornada laboral.',
-            audioUrl: '/audio/warning_call.mp3',
-            autoHangupMs: 12000,
+            ringtoneUrl: '/audio/november.mp3',
+            audioUrl: '/audio/bicecly.mp3',
+            autoHangupMs: 25000,
           });
         }
       }

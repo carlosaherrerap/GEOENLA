@@ -17,8 +17,27 @@ import { getAuthToken } from './src/services/api';
 import { API_BASE_URL } from './src/config';
 import { Audio } from 'expo-av';
 import { Vibration, Modal } from 'react-native';
+import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import { VolumeManager } from 'react-native-volume-manager';
+
+Notifications.setNotificationCategoryAsync('incoming_call', [
+  {
+    identifier: 'ANSWER_CALL',
+    buttonTitle: 'Contestar',
+    options: {
+      opensAppToForeground: true,
+    },
+  },
+  {
+    identifier: 'DECLINE_CALL',
+    buttonTitle: 'Rechazar',
+    options: {
+      opensAppToForeground: false,
+      isDestructive: true,
+    },
+  },
+]).catch(() => {});
 
 type TabState = 'activities' | 'chat' | 'profile';
 type ViewState = 'main' | 'activity_detail' | 'device_info' | 'error_logs';
@@ -58,6 +77,27 @@ function MainAppContent() {
       if (interval) clearInterval(interval);
     };
   }, [callState]);
+
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      const actionIdentifier = response.actionIdentifier;
+      if (actionIdentifier === 'ANSWER_CALL') {
+        console.log('[NotificationAction] Usuario presionó Contestar desde la notificación');
+        answerCall();
+      } else if (actionIdentifier === 'DECLINE_CALL') {
+        console.log('[NotificationAction] Usuario presionó Rechazar desde la notificación');
+        hangupCall();
+      } else if (actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER) {
+        if (callState === 'ringing') {
+          answerCall();
+        }
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [callState, activeCall]);
 
   const formatCallTime = (sec: number) => {
     const mins = Math.floor(sec / 60);
@@ -206,7 +246,14 @@ function MainAppContent() {
         const payload = JSON.parse(event.data);
         console.log('[WebSocket] Mensaje recibido:', payload);
 
-        if (payload.type === 'AUTOMATED_CALL') {
+        if (payload.type === 'REQUEST_LOCATION_PING') {
+          console.log('[WebSocket] Petición de ubicación recibida. Obteniendo posición GPS actual...');
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
+            .then((pos) => {
+              locationTracking.processLocationUpdate(pos);
+            })
+            .catch((e) => console.warn('[WebSocket] Error respondiendo ping de ubicación:', e));
+        } else if (payload.type === 'AUTOMATED_CALL') {
           const ringtoneUrl = payload.ringtoneUrl
             ? (payload.ringtoneUrl.startsWith('http')
                 ? payload.ringtoneUrl
@@ -228,13 +275,14 @@ function MainAppContent() {
           // Reproducir tono de llamada (november.mp3)
           startRingtoneAudio(ringtoneUrl);
 
-          // Disparar la notificación del sistema con alta prioridad (para sobreponerse en pantalla)
+          // Disparar la notificación del sistema con alta prioridad (estilo llamada con botones)
           Notifications.scheduleNotificationAsync({
             content: {
-              title: '⚠️ LLAMADA ENTRANTE DE INACTIVIDAD',
+              title: 'LLAMADA ENTRANTE DE INACTIVIDAD',
               body: payload.message,
               sound: true,
               priority: Notifications.AndroidNotificationPriority.MAX,
+              categoryIdentifier: 'incoming_call',
               vibrate: [0, 2000, 250, 2000, 250, 2000],
             },
             trigger: null,
