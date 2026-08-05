@@ -79,6 +79,7 @@ model locations {
   supervisors supervisors[]
   routes     routes[]
   attendances attendances[]
+  adminSedes admin_sedes[]
 
   @@map("sedes")
 }
@@ -162,6 +163,7 @@ model users {
   chats2         chats[]          @relation("User2")
   talks          talks[]
   whatsappLogsSent     whatsapp_logs[]  @relation("AdminWspLogs")
+  adminSedes     admin_sedes[]
 
   @@map("usuarios")
 }
@@ -393,4 +395,17 @@ model whatsapp_logs {
   receiver    supervisors @relation("ReceiverWspLogs", fields: [id_receiver], references: [id], onDelete: Cascade)
 
   @@map("logs_whatsapp")
+}
+
+model admin_sedes {
+  id          String    @id @default(uuid())
+  id_user     String
+  id_location String
+  created_at  DateTime? @default(now()) @db.Timestamp(0)
+
+  user        users     @relation(fields: [id_user], references: [id], onDelete: Cascade)
+  location    locations @relation(fields: [id_location], references: [id], onDelete: Cascade)
+
+  @@unique([id_user, id_location])
+  @@map("admin_sedes")
 }

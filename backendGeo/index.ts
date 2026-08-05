@@ -1390,6 +1390,115 @@ adminRoutes.post('/admin/db/sync-excel', async (_req: any, res: any) => {
   }
 });
 
+// =============================================
+// Endpoints de Asignación de Sedes a Admins (solo su)
+// =============================================
+
+// Listar todas las asignaciones actuales
+adminRoutes.get('/admin/sede-assignments', async (req: any, res: any) => {
+  if (req.user.rol !== 'su') return res.status(403).json({ message: 'Solo el superusuario puede gestionar asignaciones.' });
+  try {
+    const assignments = await prisma.admin_sedes.findMany({
+      include: {
+        user: { select: { id: true, username: true, correo: true } },
+        location: { select: { id: true, sede_reg: true, nombre: true } }
+      },
+      orderBy: { created_at: 'desc' }
+    });
+    res.json(assignments);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Listar admins disponibles (rol='admin')
+adminRoutes.get('/admin/sede-assignments/admins', async (req: any, res: any) => {
+  if (req.user.rol !== 'su') return res.status(403).json({ message: 'Solo el superusuario puede gestionar asignaciones.' });
+  try {
+    const admins = await prisma.users.findMany({
+      where: { rol: 'admin', estado: 'activo' },
+      select: {
+        id: true,
+        username: true,
+        correo: true,
+        supervisor: { select: { nombres: true, ape_pat: true } },
+        adminSedes: {
+          include: { location: { select: { id: true, sede_reg: true } } }
+        }
+      },
+      orderBy: { username: 'asc' }
+    });
+    res.json(admins);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Listar todas las sedes con info de a quién están asignadas
+adminRoutes.get('/admin/sede-assignments/sedes', async (req: any, res: any) => {
+  if (req.user.rol !== 'su') return res.status(403).json({ message: 'Solo el superusuario puede gestionar asignaciones.' });
+  try {
+    const sedes = await prisma.locations.findMany({
+      select: {
+        id: true,
+        sede_reg: true,
+        nombre: true,
+        adminSedes: {
+          include: { user: { select: { id: true, username: true } } }
+        }
+      },
+      orderBy: { sede_reg: 'asc' }
+    });
+    res.json(sedes);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Reemplazar las sedes asignadas a un admin específico
+adminRoutes.put('/admin/sede-assignments/:adminId', async (req: any, res: any) => {
+  if (req.user.rol !== 'su') return res.status(403).json({ message: 'Solo el superusuario puede gestionar asignaciones.' });
+  const { adminId } = req.params;
+  const { locationIds } = req.body; // Array de id_location
+
+  if (!Array.isArray(locationIds)) {
+    return res.status(400).json({ message: 'locationIds debe ser un array.' });
+  }
+
+  try {
+    // Verificar que el admin existe y tiene rol='admin'
+    const admin = await prisma.users.findFirst({ where: { id: adminId, rol: 'admin' } });
+    if (!admin) return res.status(404).json({ message: 'Administrador no encontrado.' });
+
+    // Verificar que ninguna sede nueva esté asignada a otro admin
+    if (locationIds.length > 0) {
+      const conflicts = await prisma.admin_sedes.findMany({
+        where: {
+          id_location: { in: locationIds },
+          id_user: { not: adminId }
+        },
+        include: { user: { select: { username: true } }, location: { select: { sede_reg: true } } }
+      });
+      if (conflicts.length > 0) {
+        const detail = conflicts.map(c => `${c.location.sede_reg} -> ${c.user.username}`).join(', ');
+        return res.status(409).json({ message: `Sedes ya asignadas a otros admins: ${detail}` });
+      }
+    }
+
+    // Transacción: eliminar las antiguas y crear las nuevas
+    await prisma.$transaction([
+      prisma.admin_sedes.deleteMany({ where: { id_user: adminId } }),
+      ...locationIds.map((locId: string) =>
+        prisma.admin_sedes.create({ data: { id_user: adminId, id_location: locId } })
+      )
+    ]);
+
+    res.json({ message: 'Asignación de sedes actualizada correctamente.' });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // Endpoint de Historial de WhatsApp (disponible para admins y su)
 protectedRoutes.get('/whatsapp/messages', async (req: any, res: any) => {
   const { rol, id } = req.user;
@@ -1403,21 +1512,16 @@ protectedRoutes.get('/whatsapp/messages', async (req: any, res: any) => {
     let whereClause: any = {};
 
     if (rol === 'admin') {
-      const adminInfo = await prisma.users.findUnique({
-        where: { id },
-        include: {
-          supervisor: {
-            include: {
-              location: true
-            }
-          }
-        }
+      // Filtrar por sedes asignadas en admin_sedes
+      const assigned = await prisma.admin_sedes.findMany({
+        where: { id_user: id },
+        include: { location: true }
       });
-      const adminSedeReg = adminInfo?.supervisor?.location?.sede_reg;
-      if (adminSedeReg) {
-        whereClause.sede_reg = adminSedeReg;
+      if (assigned.length > 0) {
+        whereClause.sede_reg = { in: assigned.map((a: any) => a.location.sede_reg) };
       } else {
-        whereClause.id_admin = id;
+        // Sin sedes asignadas = sin chats
+        return res.json([]);
       }
     } else if (rol === 'su') {
       if (sede_reg) {

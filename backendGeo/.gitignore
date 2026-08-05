@@ -1,3 +1,5 @@
 node_modules
 .env
 /generated/prisma
+src/inspect_excel.ts
+src/update_db_from_excel.ts

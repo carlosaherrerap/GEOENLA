@@ -3,7 +3,7 @@ import path from 'path';
 import { prisma } from '../prismaClient';
 
 export async function updateDatabaseFromExcel(): Promise<{ updated: number; skipped: number; errors: number }> {
-  console.log('[ExcelUpdater] Iniciando sincronización de sedes, supervisores y usuarios desde update.xlsx...');
+  console.log('[ExcelUpdater] Iniciando sincronizacion de sedes, supervisores y usuarios desde update.xlsx...');
   const filePath = path.join(__dirname, '../src/update.xlsx');
 
   const workbook = new ExcelJS.Workbook();
@@ -27,48 +27,48 @@ export async function updateDatabaseFromExcel(): Promise<{ updated: number; skip
 
     if (!rawDoc) return;
 
-    let docStr = String(rawDoc).trim();
-    if (typeof rawDoc === 'number' || (docStr.length > 0 && docStr.length < 8 && /^\d+$/.test(docStr))) {
+    let docStr = String(typeof rawDoc === 'object' && 'text' in rawDoc ? rawDoc.text : rawDoc).trim();
+    if (/^\d+$/.test(docStr) && docStr.length < 8) {
       docStr = docStr.padStart(8, '0');
     }
 
-    const sede_reg = rawSede ? String(rawSede).trim() : '';
-    const telefono = rawTel ? String(rawTel).trim() : '';
-    const correo = rawCorreo ? String(rawCorreo).trim() : '';
+    const sede_reg = rawSede ? String(typeof rawSede === 'object' && 'text' in rawSede ? rawSede.text : rawSede).trim() : '';
+    const telefono = rawTel ? String(typeof rawTel === 'object' && 'text' in rawTel ? rawTel.text : rawTel).trim() : '';
+    const correo = rawCorreo ? String(typeof rawCorreo === 'object' && 'text' in rawCorreo ? rawCorreo.text : rawCorreo).trim() : '';
 
     rows.push({ doc: docStr, sede_reg, telefono, correo });
   });
 
+  console.log(`[ExcelUpdater] ${rows.length} registros encontrados en Excel.`);
+
   for (const item of rows) {
     try {
+      // 1. Buscar supervisor por doc
       let supervisor = await prisma.supervisors.findFirst({
-        where: { doc: item.doc },
-        include: { location: true, users: true }
+        where: { doc: item.doc }
       });
 
       if (!supervisor && /^\d+$/.test(item.doc)) {
         const altDoc = item.doc.replace(/^0+/, '');
         supervisor = await prisma.supervisors.findFirst({
-          where: { doc: altDoc },
-          include: { location: true, users: true }
+          where: { doc: altDoc }
         });
       }
 
       if (!supervisor) {
-        console.warn(`[ExcelUpdater] Omitido: No se encontró supervisor con DNI/DOC "${item.doc}"`);
         skippedCount++;
         continue;
       }
 
-      // 1. Actualizar teléfono en tabla supervisores
+      // 2. Actualizar telefono en supervisores
       if (item.telefono) {
         await prisma.supervisors.update({
           where: { id: supervisor.id },
           data: { telefono: item.telefono }
-        }).catch((e) => console.warn(`[ExcelUpdater] Advertencia en teléfono para DNI ${item.doc}:`, e.message));
+        }).catch(() => {});
       }
 
-      // 2. Actualizar sede_reg en la tabla sedes (locations)
+      // 3. Actualizar sede_reg en sedes (locations)
       if (item.sede_reg) {
         if (supervisor.id_location) {
           await prisma.locations.update({
@@ -79,6 +79,7 @@ export async function updateDatabaseFromExcel(): Promise<{ updated: number; skip
           let location = await prisma.locations.findFirst({
             where: { sede_reg: item.sede_reg }
           });
+
           if (!location) {
             let ubi = await prisma.ubieties.findFirst();
             if (!ubi) {
@@ -95,6 +96,7 @@ export async function updateDatabaseFromExcel(): Promise<{ updated: number; skip
               }
             });
           }
+
           await prisma.supervisors.update({
             where: { id: supervisor.id },
             data: { id_location: location.id }
@@ -102,19 +104,23 @@ export async function updateDatabaseFromExcel(): Promise<{ updated: number; skip
         }
       }
 
-      // 3. Actualizar correo en la tabla usuarios (users)
-      if (item.correo && supervisor.users && supervisor.users.length > 0) {
-        for (const user of supervisor.users) {
+      // 4. Actualizar correo en usuarios
+      if (item.correo) {
+        const user = await prisma.users.findFirst({
+          where: { id_supervisor: supervisor.id }
+        });
+
+        if (user) {
           await prisma.users.update({
             where: { id: user.id },
             data: { correo: item.correo }
-          }).catch((e) => console.warn(`[ExcelUpdater] Advertencia en correo para usuario DNI ${item.doc}:`, e.message));
+          }).catch(() => {});
         }
       }
 
       updatedCount++;
     } catch (err: any) {
-      console.error(`[ExcelUpdater] Error procesando DNI "${item.doc}":`, err.message);
+      console.error(`[ExcelUpdater] Error en doc "${item.doc}":`, err.message);
       errorCount++;
     }
   }

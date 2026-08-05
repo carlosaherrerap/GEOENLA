@@ -152,6 +152,73 @@
       </div>
     </div>
 
+    <!-- Panel de asignación de sedes a administradores (solo superusuario) -->
+    <div v-if="userRole === 'su'" class="card assignment-card" style="margin-top: 24px; box-shadow: none; border: 1px solid var(--border-color);">
+      <h2 style="font-size: 1.1rem; font-weight: 700; margin: 0 0 16px 0; color: var(--text-heading); display: flex; align-items: center; gap: 8px;">
+        <i class="ph ph-users-three" style="font-size: 1.4rem; color: var(--primary-color);"></i>
+        Asignación de Sedes Regionales a Administradores
+      </h2>
+      <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 20px; line-height: 1.5;">
+        Selecciona un administrador para gestionar sus sedes asignadas. Las sedes asignadas a otros administradores aparecerán deshabilitadas para mantener la exclusividad.
+      </p>
+
+      <div class="assignment-layout">
+        <!-- Columna Izquierda: Lista de Administradores -->
+        <div class="admin-list-container">
+          <label class="section-label">Administradores</label>
+          <div class="admin-select-wrapper">
+            <select v-model="selectedAdminId" @change="onAdminChange" class="select-input" style="width: 100%; margin-bottom: 12px; box-shadow: none;">
+              <option value="">Seleccione un administrador...</option>
+              <option v-for="adm in admins" :key="adm.id" :value="adm.id">
+                {{ adm.username }} - {{ adm.supervisor ? `${adm.supervisor.nombres} ${adm.supervisor.ape_pat}` : adm.correo }}
+              </option>
+            </select>
+          </div>
+
+          <div v-if="selectedAdminId" class="selected-admin-details">
+            <div style="background: var(--bg-hover); padding: 12px; border-radius: 6px; font-size: 0.85rem;">
+              <div><strong>Admin:</strong> {{ activeAdminName }}</div>
+              <div><strong>Correo:</strong> {{ activeAdminEmail }}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Columna Derecha: Checkboxes de Sedes -->
+        <div class="sedes-list-container">
+          <label class="section-label">Sedes Regionales</label>
+          <div v-if="!selectedAdminId" class="no-admin-selected">
+            Seleccione un administrador para ver y asignar las sedes.
+          </div>
+          <div v-else class="sedes-checkbox-grid">
+            <div v-for="sd in sedes" :key="sd.id" class="sede-checkbox-item" :class="{ 'assigned-to-other': isSedeAssignedToOther(sd) }">
+              <label class="checkbox-label">
+                <input
+                  type="checkbox"
+                  :value="sd.id"
+                  v-model="selectedSedesForAdmin"
+                  :disabled="isSedeAssignedToOther(sd)"
+                />
+                <span class="sede-name">{{ sd.sede_reg }}</span>
+                <span v-if="isSedeAssignedToOther(sd)" class="assigned-badge">
+                  (Asignado a: {{ getSedeOwnerName(sd) }})
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <div v-if="selectedAdminId" style="margin-top: 20px; display: flex; gap: 10px;">
+            <button class="btn btn-primary" @click="saveAssignment" :disabled="savingAssignment">
+              <span v-if="savingAssignment">Guardando...</span>
+              <span v-else>Guardar Asignaciones</span>
+            </button>
+            <button class="btn btn-secondary" @click="cancelAssignment" :disabled="savingAssignment">
+              Cancelar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
@@ -204,6 +271,10 @@ async function fetchStatus() {
     sedeReg.value = res.data.sede_reg || 'No asignada'
     sedeJuris.value = res.data.sede_juris || 'No asignada'
     userRole.value = res.data.rol || 'admin'
+
+    if (userRole.value === 'su' && admins.value.length === 0) {
+      fetchAssignmentData()
+    }
 
     if (res.data.error) {
       backendError.value = res.data.error
@@ -312,6 +383,81 @@ function startNormalPoll() {
   pollTimer = setInterval(fetchStatus, 5000)
 }
 
+// Assignment panel states and methods
+const admins = ref([])
+const sedes = ref([])
+const selectedAdminId = ref('')
+const selectedSedesForAdmin = ref([])
+const savingAssignment = ref(false)
+
+const activeAdminName = computed(() => {
+  const admin = admins.value.find(a => a.id === selectedAdminId.value)
+  if (!admin) return ''
+  return admin.supervisor ? `${admin.supervisor.nombres} ${admin.supervisor.ape_pat}` : admin.username
+})
+
+const activeAdminEmail = computed(() => {
+  const admin = admins.value.find(a => a.id === selectedAdminId.value)
+  return admin ? admin.correo : ''
+})
+
+async function fetchAssignmentData() {
+  if (userRole.value !== 'su') return
+  try {
+    const [adminsRes, sedesRes] = await Promise.all([
+      api.get('/admin/sede-assignments/admins'),
+      api.get('/admin/sede-assignments/sedes')
+    ])
+    admins.value = adminsRes.data
+    sedes.value = sedesRes.data
+  } catch (err) {
+    console.error('Error fetching assignment data:', err)
+  }
+}
+
+function onAdminChange() {
+  selectedSedesForAdmin.value = []
+  if (!selectedAdminId.value) return
+
+  const admin = admins.value.find(a => a.id === selectedAdminId.value)
+  if (admin && admin.adminSedes) {
+    selectedSedesForAdmin.value = admin.adminSedes.map(as => as.location.id)
+  }
+}
+
+function isSedeAssignedToOther(sede) {
+  if (!sede.adminSedes || sede.adminSedes.length === 0) return false
+  return sede.adminSedes.some(as => as.user && as.user.id !== selectedAdminId.value)
+}
+
+function getSedeOwnerName(sede) {
+  if (!sede.adminSedes || sede.adminSedes.length === 0) return ''
+  const assigned = sede.adminSedes.find(as => as.user && as.user.id !== selectedAdminId.value)
+  return assigned && assigned.user ? assigned.user.username : ''
+}
+
+async function saveAssignment() {
+  if (!selectedAdminId.value) return
+  savingAssignment.value = true
+  try {
+    await api.put(`/admin/sede-assignments/${selectedAdminId.value}`, {
+      locationIds: selectedSedesForAdmin.value
+    })
+    await fetchAssignmentData()
+    onAdminChange()
+    alert('Asignación de sedes actualizada correctamente.')
+  } catch (err) {
+    console.error('Error saving assignment:', err)
+    alert(err.response?.data?.message || 'Error al guardar asignación.')
+  } finally {
+    savingAssignment.value = false
+  }
+}
+
+function cancelAssignment() {
+  onAdminChange()
+}
+
 onMounted(() => {
   fetchStatus()
   startNormalPoll()
@@ -417,5 +563,92 @@ onUnmounted(() => {
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+/* Assignment panel styles */
+.assignment-layout {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 24px;
+  border-top: 1px solid var(--border-color);
+  padding-top: 20px;
+}
+
+@media (max-width: 768px) {
+  .assignment-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.section-label {
+  display: block;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-heading);
+  margin-bottom: 8px;
+}
+
+.no-admin-selected {
+  padding: 20px;
+  background: var(--bg-hover);
+  border: 1px dashed var(--border-color);
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  text-align: center;
+}
+
+.sedes-checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  max-height: 250px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px;
+  background: var(--bg-card);
+}
+
+.sede-checkbox-item {
+  display: flex;
+  align-items: center;
+  padding: 6px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.88rem;
+  color: var(--text-heading);
+  cursor: pointer;
+  width: 100%;
+}
+
+.checkbox-label input {
+  cursor: pointer;
+}
+
+.sede-checkbox-item.assigned-to-other {
+  opacity: 0.6;
+}
+
+.sede-checkbox-item.assigned-to-other .checkbox-label {
+  cursor: not-allowed;
+}
+
+.sede-checkbox-item.assigned-to-other input {
+  cursor: not-allowed;
+}
+
+.sede-name {
+  font-weight: 500;
+}
+
+.assigned-badge {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-style: italic;
 }
 </style>
