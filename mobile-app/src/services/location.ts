@@ -47,6 +47,16 @@ class LocationTrackingService {
 
   private watchdogTimer: any = null;
   private isGpsWarningAlertActive = false;
+  private onStatusChange: ((active: boolean) => void) | null = null;
+
+  constructor() {
+    // Iniciar el watchdog inmediatamente para sincronizar el GPS físico y el switch en tiempo real
+    this.startGpsWatchdog();
+  }
+
+  public registerStatusChangeListener(fn: (active: boolean) => void) {
+    this.onStatusChange = fn;
+  }
 
   public setUserEmail(email: string) {
     this.userEmail = email;
@@ -77,6 +87,26 @@ class LocationTrackingService {
       const { status } = await Location.getForegroundPermissionsAsync();
 
       if (!isGpsEnabled || status !== 'granted') {
+        // Si el GPS físico se apagó pero el switch de la app seguía encendido, sincronizar apagado
+        if (this.isTracking) {
+          console.log('[GPS Watchdog] GPS físico desactivado o sin permisos. Desactivando switch...');
+          this.isTracking = false;
+          await offlineStorage.setSwitchState(false);
+
+          // Guardar el error en la cola local de errores de sistema
+          await offlineStorage.addSyncQueueItem({
+            id: Math.random().toString(),
+            action: 'GPS_HARDWARE_TURNED_OFF',
+            table_name: 'system_errors',
+            payload: { error: 'El GPS del dispositivo fue apagado manualmente en los ajustes de Android/iOS o se revocaron los permisos.' },
+            recorded_at: new Date().toISOString()
+          }).catch(() => {});
+
+          if (this.onStatusChange) {
+            this.onStatusChange(false);
+          }
+        }
+
         if (!this.isGpsWarningAlertActive) {
           this.isGpsWarningAlertActive = true;
           const { Alert } = require('react-native');
@@ -95,13 +125,25 @@ class LocationTrackingService {
         }
       } else {
         this.isGpsWarningAlertActive = false;
+        
+        // Si el GPS está prendido en el teléfono pero el switch de la app estaba apagado, sincronizar encendido
         if (!this.isTracking) {
-          console.log('[GPS Watchdog] Reactivando transmisión GPS automáticamente...');
+          console.log('[GPS Watchdog] GPS activo detectado. Auto-encendiendo switch de transmisión...');
           await this.startTracking();
+          if (this.onStatusChange) {
+            this.onStatusChange(true);
+          }
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn('[GPS Watchdog Error]', err);
+      await offlineStorage.addSyncQueueItem({
+        id: Math.random().toString(),
+        action: 'GPS_WATCHDOG_CHECK_ERROR',
+        table_name: 'system_errors',
+        payload: { error: `Error en ciclo de watchdog GPS: ${err.message}` },
+        recorded_at: new Date().toISOString()
+      }).catch(() => {});
     }
   }
 

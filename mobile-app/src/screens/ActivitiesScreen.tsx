@@ -158,11 +158,52 @@ export const ActivitiesScreen: React.FC<Props> = ({
 
   useEffect(() => {
     fetchActivities();
-    offlineStorage.getSwitchState().then((state) => {
-      setIsTransmitting(state);
-      if (state) {
-        locationTracking.startTracking();
+    
+    // Encender GPS y transmisión por defecto si es posible
+    const autoEnableGPS = async () => {
+      try {
+        const isGpsEnabled = await Location.hasServicesEnabledAsync();
+        const { status } = await Location.getForegroundPermissionsAsync();
+
+        if (isGpsEnabled && status === 'granted') {
+          console.log('[ActivitiesScreen] GPS ya habilitado. Auto-encendiendo transmisión...');
+          await locationTracking.startTracking();
+          setIsTransmitting(true);
+        } else {
+          // Intentar forzar el encendido solicitando permisos
+          const reqPerm = await Location.requestForegroundPermissionsAsync();
+          const gpsState = await Location.hasServicesEnabledAsync();
+          if (reqPerm.status === 'granted' && gpsState) {
+            console.log('[ActivitiesScreen] Permisos otorgados. Auto-encendiendo transmisión...');
+            await locationTracking.startTracking();
+            setIsTransmitting(true);
+          } else {
+            // Guardar error en logs si no se pudo auto-activar
+            await offlineStorage.addSyncQueueItem({
+              id: Math.random().toString(),
+              action: 'GPS_AUTO_ENABLE_FAILED',
+              table_name: 'system_errors',
+              payload: { error: 'No se pudo auto-activar la transmisión. GPS apagado o permisos denegados.' },
+              recorded_at: new Date().toISOString()
+            }).catch(() => {});
+          }
+        }
+      } catch (err: any) {
+        await offlineStorage.addSyncQueueItem({
+          id: Math.random().toString(),
+          action: 'GPS_AUTO_ENABLE_ERROR',
+          table_name: 'system_errors',
+          payload: { error: `Excepción en auto-encendido GPS: ${err.message}` },
+          recorded_at: new Date().toISOString()
+        }).catch(() => {});
       }
+    };
+
+    autoEnableGPS();
+
+    // Sincronizar el switch en tiempo real con el watchdog del GPS físico
+    locationTracking.registerStatusChangeListener((active) => {
+      setIsTransmitting(active);
     });
   }, []);
 

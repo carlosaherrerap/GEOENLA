@@ -17,6 +17,7 @@ import { getAuthToken } from './src/services/api';
 import { API_BASE_URL } from './src/config';
 import { Audio } from 'expo-av';
 import { Vibration, Modal } from 'react-native';
+import * as Notifications from 'expo-notifications';
 
 type TabState = 'activities' | 'chat' | 'profile';
 type ViewState = 'main' | 'activity_detail' | 'device_info' | 'error_logs';
@@ -113,13 +114,13 @@ function MainAppContent() {
     const wsUrl = `${getWsUrl(API_BASE_URL)}?token=${token}`;
     console.log(`[WebSocket] Conectando a ${wsUrl}...`);
 
-    let ws = new global.WebSocket(wsUrl);
+    let ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
       console.log('[WebSocket] Conexión establecida.');
     };
 
-    ws.onmessage = (event) => {
+    ws.onmessage = (event: any) => {
       try {
         const payload = JSON.parse(event.data);
         console.log('[WebSocket] Mensaje recibido:', payload);
@@ -134,6 +135,18 @@ function MainAppContent() {
           const playUrl = payload.audioUrl.startsWith('http')
             ? payload.audioUrl
             : `${API_BASE_URL.replace('/api', '')}${payload.audioUrl}`;
+
+          // Disparar la notificación del sistema con alta prioridad (para sobreponerse en pantalla)
+          Notifications.scheduleNotificationAsync({
+            content: {
+              title: '⚠️ ADVERTENCIA DE INACTIVIDAD',
+              body: payload.message,
+              sound: true,
+              priority: Notifications.AndroidNotificationPriority.MAX,
+              vibrate: [0, 2000, 250, 2000, 250, 2000],
+            },
+            trigger: null,
+          }).catch((e) => console.warn('[Notifications] Error scheduling call push:', e));
 
           startCallAudio(playUrl);
           startVibration();

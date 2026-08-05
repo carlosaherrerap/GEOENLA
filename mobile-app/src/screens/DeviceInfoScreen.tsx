@@ -39,7 +39,7 @@ export const getRealDeviceDetails = () => {
     os_version: String(Platform.Version || '14'),
     battery_level: 95,
     battery_state: 'Cargando / Conectado',
-    app_version: Constants.expoConfig?.version || '1.0.0',
+    app_version: Constants.expoConfig?.version || '1.1',
   };
 };
 
