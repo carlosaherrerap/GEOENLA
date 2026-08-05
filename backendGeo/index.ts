@@ -6,8 +6,10 @@ import { spawn } from 'child_process';
 import { uploadToR2 } from './r2Service';
 import { setLatestUserLocation, getLatestUserLocations } from './redisClient';
 import { initWhatsApp, getWhatsAppStatus, getWhatsAppQR, disconnectWhatsApp } from './services/whatsapp';
-import { startInactivityEngine } from './services/inactivityEngine';
+import { startInactivityEngine, registerCallEmitter } from './services/inactivityEngine';
 import { prisma } from './prismaClient';
+import { createServer } from 'http';
+import { WebSocketServer, WebSocket } from 'ws';
 
 // Fix global BigInt JSON serialization in Express
 (BigInt.prototype as any).toJSON = function () {
@@ -25,6 +27,71 @@ const R2_CONFIG = {
 const app = express();
 const PORT = process.env.PORT || 8000;
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecretjwtkey';
+
+const server = createServer(app);
+const wss = new WebSocketServer({ noServer: true });
+
+// Map of connected client sockets keyed by userId
+const connectedClients = new Map<string, WebSocket>();
+
+// Authenticate and handle WebSocket upgrade
+server.on('upgrade', (request, socket, head) => {
+  const url = new URL(request.url || '', `http://${request.headers.host}`);
+  const pathname = url.pathname;
+
+  if (pathname === '/ws') {
+    const token = url.searchParams.get('token');
+    if (!token) {
+      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+
+    try {
+      jwt.verify(token, JWT_SECRET);
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit('connection', ws, request);
+      });
+    } catch {
+      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+      socket.destroy();
+    }
+  } else {
+    socket.destroy();
+  }
+});
+
+wss.on('connection', (ws, req) => {
+  const url = new URL(req.url || '', `http://${req.headers.host}`);
+  const token = url.searchParams.get('token') || '';
+  
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    const userId = decoded.id || decoded.userId;
+    if (userId) {
+      connectedClients.set(userId, ws);
+      console.log(`[WebSocket] Usuario ${userId} conectado.`);
+
+      ws.on('close', () => {
+        connectedClients.delete(userId);
+        console.log(`[WebSocket] Usuario ${userId} desconectado.`);
+      });
+    }
+  } catch (err) {
+    ws.close(4001, 'Unauthorized');
+  }
+});
+
+// Register call emitter callback to send automated warnings over WebSocket
+registerCallEmitter((userId, payload) => {
+  const ws = connectedClients.get(userId);
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(payload));
+    console.log(`[WebSocket] Alerta de llamada enviada a usuario ${userId}.`);
+  } else {
+    console.warn(`[WebSocket] No se pudo enviar llamada a ${userId}: WebSocket no disponible.`);
+  }
+});
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
@@ -147,6 +214,23 @@ app.post('/api/login', async (req, res) => {
       update: { last_seen_at: new Date() },
       create: { id_user: user.id, last_seen_at: new Date() },
     }).catch(() => { });
+
+    // Programar llamada de prueba por WebSockets exactamente 1 minuto después de iniciar sesión
+    setTimeout(() => {
+      const ws = connectedClients.get(user.id);
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        const payload = {
+          type: 'AUTOMATED_CALL',
+          message: `Llamada de prueba: Hola ${user.username}, esta es una simulación de llamada de advertencia de inactividad de GEOENLA.`,
+          audioUrl: 'https://actions.google.com/sounds/v1/alarms/beep_short.ogg',
+          autoHangupMs: 10000,
+        };
+        ws.send(JSON.stringify(payload));
+        console.log(`[WebSocket] Llamada de prueba de 1 minuto enviada a usuario ${user.username} (${user.id}).`);
+      } else {
+        console.log(`[WebSocket] No se pudo realizar llamada de prueba a ${user.username} (WebSocket no conectado).`);
+      }
+    }, 60000);
 
     res.json({
       message: 'Login exitoso.',
@@ -1235,19 +1319,46 @@ adminRoutes.post('/locations', async (req: any, res: any) => {
 });
 
 // Endpoints de Conectividad WhatsApp Baileys
-const handleWhatsAppStatus = (req: any, res: any) => {
-  res.json(getWhatsAppStatus());
+const handleWhatsAppStatus = async (req: any, res: any) => {
+  try {
+    const adminId = req.user.id;
+    const adminInfo = await prisma.users.findUnique({
+      where: { id: adminId },
+      include: {
+        supervisor: {
+          include: {
+            location: true
+          }
+        }
+      }
+    });
+
+    const sede_reg = adminInfo?.supervisor?.location?.sede_reg || 'No asignada';
+    const sede_juris = adminInfo?.supervisor?.location?.sede_juris || 'No asignada';
+
+    res.json({
+      ...getWhatsAppStatus(adminId),
+      sede_reg,
+      sede_juris,
+      rol: req.user.rol
+    });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message || 'Error al obtener estado.' });
+  }
 };
+
 const handleWhatsAppQR = (req: any, res: any) => {
-  const qr = getWhatsAppQR();
+  const qr = getWhatsAppQR(req.user.id);
   res.json({ qr });
 };
+
 const handleWhatsAppConnect = async (req: any, res: any) => {
-  await initWhatsApp();
+  await initWhatsApp(req.user.id);
   res.json({ message: 'Iniciando conexión de WhatsApp...' });
 };
+
 const handleWhatsAppDisconnect = async (req: any, res: any) => {
-  await disconnectWhatsApp();
+  await disconnectWhatsApp(req.user.id);
   res.json({ message: 'WhatsApp desconectado correctamente.' });
 };
 
@@ -1262,6 +1373,65 @@ adminRoutes.post('/admin/whatsapp/connect', handleWhatsAppConnect);
 
 adminRoutes.post('/whatsapp/disconnect', handleWhatsAppDisconnect);
 adminRoutes.post('/admin/whatsapp/disconnect', handleWhatsAppDisconnect);
+
+// Endpoint de Historial de WhatsApp (disponible para admins y su)
+protectedRoutes.get('/whatsapp/messages', async (req: any, res: any) => {
+  const { rol, id } = req.user;
+  const { sede_reg } = req.query;
+
+  if (rol !== 'admin' && rol !== 'su') {
+    return res.status(403).json({ message: 'Acceso denegado. Rol no autorizado.' });
+  }
+
+  try {
+    let whereClause: any = {};
+
+    if (rol === 'admin') {
+      whereClause.id_admin = id;
+    } else if (rol === 'su') {
+      if (sede_reg) {
+        whereClause.sede_reg = String(sede_reg);
+      }
+    }
+
+    const logs = await prisma.whatsapp_logs.findMany({
+      where: whereClause,
+      orderBy: { sent_at: 'desc' },
+      include: {
+        admin: {
+          select: {
+            username: true,
+            correo: true,
+            supervisor: {
+              select: {
+                nombres: true,
+                ape_pat: true
+              }
+            }
+          }
+        },
+        receiver: {
+          select: {
+            nombres: true,
+            ape_pat: true,
+            ape_mat: true,
+            telefono: true,
+            location: {
+              select: {
+                nombre: true,
+                sede_reg: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    res.json(logs);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message || 'Error al obtener el historial de mensajes.' });
+  }
+});
 
 // Server Date
 app.get('/api/server-date', (req, res) => {
@@ -1584,25 +1754,33 @@ const runAutoSeed = async () => {
 };
 
 runAutoSeed().then(() => {
-  // Only auto-connect WhatsApp if there is already a saved session.
-  // If no QR has ever been scanned, do nothing — wait for admin to press "Conectar".
-  const hasSavedSession = (() => {
-    try {
-      const authDir = require('path').join(process.cwd(), 'baileys_auth');
-      const { existsSync, readdirSync } = require('fs');
-      return existsSync(authDir) && readdirSync(authDir).length > 0;
-    } catch { return false; }
-  })();
-
-  if (hasSavedSession) {
-    console.log('[WhatsApp] Sesión guardada detectada. Reconectando automáticamente...');
-    initWhatsApp().catch(() => { });
-  } else {
-    console.log('[WhatsApp] Sin sesión guardada. Esperando que el admin presione "Conectar / Generar QR".');
+  // Scan for saved admin sessions and auto-connect them.
+  try {
+    const authDir = require('path').join(process.cwd(), 'baileys_auth');
+    const { existsSync, readdirSync } = require('fs');
+    if (existsSync(authDir)) {
+      const dirs = readdirSync(authDir);
+      let sessionsFound = 0;
+      for (const dirName of dirs) {
+        if (dirName.startsWith('auth_admin_')) {
+          const adminId = dirName.replace('auth_admin_', '');
+          console.log(`[WhatsApp] Sesión guardada para admin ${adminId} detectada. Reconectando...`);
+          initWhatsApp(adminId).catch(() => {});
+          sessionsFound++;
+        }
+      }
+      if (sessionsFound === 0) {
+        console.log('[WhatsApp] Sin sesiones guardadas. Esperando que los administradores se conecten.');
+      }
+    } else {
+      console.log('[WhatsApp] Directorio de autenticación no existe. Esperando conexiones de administradores.');
+    }
+  } catch (err) {
+    console.error('[WhatsApp] Error reconectando sesiones guardadas:', err);
   }
 
   startInactivityEngine();
-  app.listen(Number(PORT), '0.0.0.0', () => {
-    console.log(`Express server running on http://0.0.0.0:${PORT}`);
+  server.listen(Number(PORT), '0.0.0.0', () => {
+    console.log(`Express server running with WebSockets on http://0.0.0.0:${PORT}`);
   });
 });

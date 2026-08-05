@@ -22,66 +22,93 @@
           <span :class="['badge', statusBadgeClass]">{{ statusText }}</span>
         </div>
 
-        <div v-if="status === 'CONNECTED'" style="text-align: center; padding: 32px 16px;">
-          <div style="width: 70px; height: 70px; border-radius: 50%; background: rgba(37, 211, 102, 0.15); color: #25D366; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px auto;">
-            <i class="ph ph-check-circle" style="font-size: 2.8rem;"></i>
+        <!-- Información de la Sede asignada al Admin -->
+        <div style="background: var(--bg-hover); padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 0.88rem; text-align: left;">
+          <div><strong>Sede Regional:</strong> <span style="color: var(--primary-color); font-weight: 600;">{{ sedeReg }}</span></div>
+          <div><strong>Jurisdicción:</strong> <span style="color: var(--text-heading); font-weight: 500;">{{ sedeJuris }}</span></div>
+          <div v-if="userRole === 'su'"><strong>Rol especial:</strong> <span class="badge-su">Superusuario (su)</span></div>
+        </div>
+
+        <!-- Si el usuario es Superusuario (su), no requiere escanear QR -->
+        <div v-if="userRole === 'su'" style="text-align: center; padding: 24px 16px;">
+          <div style="width: 70px; height: 70px; border-radius: 50%; background: rgba(16, 185, 129, 0.15); color: #10b981; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px auto;">
+            <i class="ph ph-shield-check" style="font-size: 2.8rem;"></i>
           </div>
-          <h3 style="margin: 0 0 8px 0; font-size: 1.2rem; color: var(--text-heading);">WhatsApp Vinculado Exitosamente</h3>
+          <h3 style="margin: 0 0 8px 0; font-size: 1.2rem; color: var(--text-heading);">Acceso Maestro Activo</h3>
           <p style="color: var(--text-muted); font-size: 0.9rem; max-width: 400px; margin: 0 auto 24px auto;">
-            El servidor está conectado a WhatsApp y listo para enviar notificaciones automáticas de inactividad a los trabajadores.
+            Como superusuario no requieres conectar un dispositivo. Tienes acceso para visualizar todos los mensajes enviados de todas las regiones.
           </p>
-          <button class="btn btn-danger" @click="disconnectWhatsApp" :disabled="loading">
-            <i class="ph ph-power"></i> Desconectar WhatsApp
-          </button>
         </div>
 
-        <div v-else-if="qrImage" style="text-align: center; padding: 24px 16px;">
-          <h3 style="margin: 0 0 8px 0; font-size: 1.1rem; color: var(--text-heading);">Escanea el Código QR</h3>
-          <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 20px;">
-            Abre WhatsApp en tu teléfono &rarr; Menú / Ajustes &rarr; <strong>Dispositivos vinculados</strong> &rarr; Escanear código QR.
-          </p>
-          
-          <div style="background: #ffffff; padding: 16px; display: inline-block; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); margin-bottom: 20px;">
-            <img :src="qrImage" alt="WhatsApp QR Code" style="width: 240px; height: 240px; display: block;" />
-          </div>
-
-          <div style="display: flex; justify-content: center; gap: 12px;">
-            <button class="btn btn-primary" @click="fetchQR" :disabled="loading">
-              <i class="ph ph-arrows-clockwise"></i> Actualizar QR
+        <!-- Si el usuario es Admin normal -->
+        <div v-else>
+          <div v-if="status === 'CONNECTED'" style="text-align: center; padding: 32px 16px;">
+            <div style="width: 70px; height: 70px; border-radius: 50%; background: rgba(37, 211, 102, 0.15); color: #25D366; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px auto;">
+              <i class="ph ph-check-circle" style="font-size: 2.8rem;"></i>
+            </div>
+            <h3 style="margin: 0 0 8px 0; font-size: 1.2rem; color: var(--text-heading);">WhatsApp Vinculado Exitosamente</h3>
+            <p style="color: var(--text-muted); font-size: 0.9rem; max-width: 400px; margin: 0 auto 24px auto;">
+              Tu cuenta de WhatsApp regional está conectada y lista para enviar notificaciones a los supervisores de la región <strong>{{ sedeReg }}</strong>.
+            </p>
+            <button class="btn btn-danger" @click="disconnectWhatsApp" :disabled="loading">
+              <i class="ph ph-power"></i> Desconectar WhatsApp
             </button>
-            <button class="btn btn-ghost" @click="disconnectWhatsApp">Cancelar</button>
+          </div>
+
+          <div v-else-if="qrImage" style="text-align: center; padding: 24px 16px;">
+            <h3 style="margin: 0 0 8px 0; font-size: 1.1rem; color: var(--text-heading);">Escanea el Código QR</h3>
+            <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 20px;">
+              Abre WhatsApp en tu teléfono &rarr; Menú / Ajustes &rarr; <strong>Dispositivos vinculados</strong> &rarr; Escanear código QR.
+            </p>
+            
+            <div style="background: #ffffff; padding: 16px; display: inline-block; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); margin-bottom: 20px;">
+              <img :src="qrImage" alt="WhatsApp QR Code" style="width: 240px; height: 240px; display: block;" />
+            </div>
+
+            <div style="display: flex; justify-content: center; gap: 12px;">
+              <button class="btn btn-primary" @click="fetchQR" :disabled="loading">
+                <i class="ph ph-arrows-clockwise"></i> Actualizar QR
+              </button>
+              <button class="btn btn-ghost" @click="disconnectWhatsApp">Cancelar</button>
+            </div>
+          </div>
+
+          <!-- Generando QR: spinner de espera -->
+          <div v-else-if="generatingQR" style="text-align: center; padding: 32px 16px;">
+            <div style="width: 70px; height: 70px; border-radius: 50%; background: rgba(2, 74, 216, 0.1); color: var(--primary-color); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px auto;">
+              <i class="ph ph-spinner" style="font-size: 2.5rem; animation: spin 1s linear infinite;"></i>
+            </div>
+            <h3 style="margin: 0 0 8px 0; font-size: 1.1rem; color: var(--text-heading);">Generando Código QR...</h3>
+            <p style="color: var(--text-muted); font-size: 0.85rem; max-width: 380px; margin: 0 auto;">
+              Espera unos segundos mientras Baileys inicializa la sesión.
+            </p>
+          </div>
+
+          <!-- Sin conexión: botón conectar -->
+          <div v-else style="text-align: center; padding: 32px 16px;">
+            <div style="width: 70px; height: 70px; border-radius: 50%; background: var(--bg-hover); color: var(--text-muted); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px auto;">
+              <i class="ph ph-qr-code" style="font-size: 2.5rem;"></i>
+            </div>
+            <h3 style="margin: 0 0 8px 0; font-size: 1.1rem; color: var(--text-heading);">WhatsApp no Conectado</h3>
+            <p style="color: var(--text-muted); font-size: 0.9rem; max-width: 380px; margin: 0 auto 16px auto;">
+              Inicia la conexión para generar un nuevo código QR y sincronizar la cuenta de envío de mensajes.
+            </p>
+            <!-- Error del backend (timeout, sesión inválida, etc.) -->
+            <div v-if="backendError" style="background: rgba(225,29,72,0.08); border: 1px solid rgba(225,29,72,0.25); border-radius: 8px; padding: 10px 16px; margin: 0 auto 16px auto; max-width: 380px; font-size: 0.82rem; color: #e11d48; text-align: left;">
+              <i class="ph ph-warning-circle"></i> {{ backendError }}
+            </div>
+            <button class="btn btn-primary" @click="connectWhatsApp" :disabled="loading">
+              <i class="ph ph-plug"></i> Conectar / Generar QR
+            </button>
           </div>
         </div>
 
-        <!-- Generando QR: spinner de espera -->
-        <div v-else-if="generatingQR" style="text-align: center; padding: 32px 16px;">
-          <div style="width: 70px; height: 70px; border-radius: 50%; background: rgba(2, 74, 216, 0.1); color: var(--primary-color); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px auto;">
-            <i class="ph ph-spinner" style="font-size: 2.5rem; animation: spin 1s linear infinite;"></i>
-          </div>
-          <h3 style="margin: 0 0 8px 0; font-size: 1.1rem; color: var(--text-heading);">Generando Código QR...</h3>
-          <p style="color: var(--text-muted); font-size: 0.85rem; max-width: 380px; margin: 0 auto;">
-            Espera unos segundos mientras Baileys inicializa la sesión.
-          </p>
-        </div>
-
-        <!-- Sin conexión: botón conectar -->
-        <div v-else style="text-align: center; padding: 32px 16px;">
-          <div style="width: 70px; height: 70px; border-radius: 50%; background: var(--bg-hover); color: var(--text-muted); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px auto;">
-            <i class="ph ph-qr-code" style="font-size: 2.5rem;"></i>
-          </div>
-          <h3 style="margin: 0 0 8px 0; font-size: 1.1rem; color: var(--text-heading);">WhatsApp no Conectado</h3>
-          <p style="color: var(--text-muted); font-size: 0.9rem; max-width: 380px; margin: 0 auto 16px auto;">
-            Inicia la conexión para generar un nuevo código QR y sincronizar la cuenta de envío de mensajes.
-          </p>
-          <!-- Error del backend (timeout, sesión inválida, etc.) -->
-          <div v-if="backendError" style="background: rgba(225,29,72,0.08); border: 1px solid rgba(225,29,72,0.25); border-radius: 8px; padding: 10px 16px; margin: 0 auto 16px auto; max-width: 380px; font-size: 0.82rem; color: #e11d48; text-align: left;">
-            <i class="ph ph-warning-circle"></i> {{ backendError }}
-          </div>
-          <button class="btn btn-primary" @click="connectWhatsApp" :disabled="loading">
-            <i class="ph ph-plug"></i> Conectar / Generar QR
+        <!-- Botón Ver Chats -->
+        <div style="margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 16px;">
+          <button class="btn btn-secondary" @click="openChatsModal" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;">
+            <i class="ph ph-chat-circle-text" style="font-size: 1.2rem;"></i> VER CHATS
           </button>
         </div>
-
       </div>
 
       <!-- Tarjeta de Reglas del Motor de Inactividad -->
@@ -124,6 +151,53 @@
         </div>
       </div>
     </div>
+
+    <!-- MODAL DE CHATS -->
+    <div v-if="showChatsModal" class="modal-backdrop" @click.self="showChatsModal = false">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>Mensajes de WhatsApp Enviados</h3>
+          <button class="close-btn" @click="showChatsModal = false">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <!-- Filtro para el Superusuario (su) -->
+          <div v-if="userRole === 'su'" class="filter-bar">
+            <label style="font-weight: 600; font-size: 0.88rem; color: var(--text-heading);">Sede Regional:</label>
+            <select v-model="selectedSedeFilter" @change="fetchChats" class="select-input">
+              <option value="">Todas las regiones</option>
+              <option value="LIMA">Lima</option>
+              <option value="AREQUIPA">Arequipa</option>
+              <option value="LA LIBERTAD">La Libertad</option>
+            </select>
+          </div>
+
+          <div v-if="loadingChats" style="text-align: center; padding: 40px 0;">
+            <i class="ph ph-spinner spin" style="font-size: 2rem; color: var(--primary-color);"></i>
+            <p style="margin-top: 10px; color: var(--text-muted); font-size: 0.88rem;">Cargando historial...</p>
+          </div>
+
+          <div v-else-if="chatLogs.length === 0" style="text-align: center; padding: 40px 0; color: var(--text-muted); font-size: 0.88rem;">
+            No hay mensajes de WhatsApp registrados.
+          </div>
+
+          <div v-else class="chat-list">
+            <div v-for="msg in chatLogs" :key="msg.id" class="chat-item">
+              <div class="chat-meta">
+                <span class="chat-sender">Enviado por: <strong>{{ msg.admin?.supervisor ? `${msg.admin.supervisor.nombres} ${msg.admin.supervisor.ape_pat}` : msg.admin?.username }}</strong> ({{ msg.sede_reg }})</span>
+                <span class="chat-time">{{ formatTime(msg.sent_at) }}</span>
+              </div>
+              <div class="chat-receiver">
+                Para: <strong>{{ msg.receiver ? `${msg.receiver.nombres} ${msg.receiver.ape_pat} ${msg.receiver.ape_mat}` : 'Desconocido' }}</strong> (Teléfono: {{ msg.phone }})
+              </div>
+              <div class="chat-bubble">
+                {{ msg.message }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -137,6 +211,17 @@ const loading = ref(false)
 const generatingQR = ref(false)
 const backendError = ref(null)
 let pollTimer = null
+
+// Regional/role states
+const sedeReg = ref('Cargando...')
+const sedeJuris = ref('Cargando...')
+const userRole = ref('admin')
+
+// Modal/logs states
+const showChatsModal = ref(false)
+const chatLogs = ref([])
+const loadingChats = ref(false)
+const selectedSedeFilter = ref('')
 
 const statusBadgeClass = computed(() => {
   if (status.value === 'CONNECTED') return 'badge-success'
@@ -162,6 +247,9 @@ async function fetchStatus() {
     }
     const prevStatus = status.value
     status.value = res.data.status
+    sedeReg.value = res.data.sede_reg || 'No asignada'
+    sedeJuris.value = res.data.sede_juris || 'No asignada'
+    userRole.value = res.data.rol || 'admin'
 
     if (res.data.error) {
       backendError.value = res.data.error
@@ -241,6 +329,33 @@ async function disconnectWhatsApp() {
     loading.value = false
   }
   startNormalPoll()
+}
+
+async function fetchChats() {
+  loadingChats.value = true
+  try {
+    let url = '/whatsapp/messages'
+    if (userRole.value === 'su' && selectedSedeFilter.value) {
+      url += `?sede_reg=${encodeURIComponent(selectedSedeFilter.value)}`
+    }
+    const res = await api.get(url)
+    chatLogs.value = res.data
+  } catch (err) {
+    console.error('Error cargando historial de WhatsApp:', err)
+  } finally {
+    loadingChats.value = false
+  }
+}
+
+function openChatsModal() {
+  showChatsModal.value = true
+  fetchChats()
+}
+
+function formatTime(dateStr) {
+  if (!dateStr) return ''
+  const d = new Date(dateStr)
+  return d.toLocaleString('es-PE', { timeZone: 'America/Lima' })
 }
 
 function startFastPoll() {
@@ -350,6 +465,128 @@ onUnmounted(() => {
 .step-20m {
   background: rgba(225, 29, 72, 0.15);
   color: #e11d48;
+}
+
+.badge-su {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 20px;
+  display: inline-block;
+}
+
+/* MODAL STYLES */
+.modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  width: 650px;
+  max-width: 90%;
+  max-height: 85%;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+}
+
+.modal-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-heading);
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.modal-body {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+  text-align: left;
+}
+
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+  background: var(--bg-hover);
+  padding: 10px 14px;
+  border-radius: 8px;
+}
+
+.select-input {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-heading);
+}
+
+.chat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.chat-item {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 12px 16px;
+  background: var(--bg-card);
+}
+
+.chat-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.chat-receiver {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-heading);
+  margin-bottom: 10px;
+}
+
+.chat-bubble {
+  font-size: 0.88rem;
+  background: var(--bg-hover);
+  padding: 10px 14px;
+  border-radius: 8px;
+  color: var(--text-heading);
+  white-space: pre-line;
+  line-height: 1.4;
 }
 
 @keyframes spin {

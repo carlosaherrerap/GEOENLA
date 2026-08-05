@@ -9,68 +9,80 @@ import QRCode from 'qrcode';
 import path from 'path';
 import fs from 'fs';
 
-let sock: WASocket | null = null;
-let qrCodeDataUrl: string | null = null;
-let connectionStatus: 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' = 'DISCONNECTED';
-let lastError: string | null = null;
-let isInitializing = false;
-let qrTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
+// Maps of active sockets and connection states keyed by adminId
+const activeSockets = new Map<string, WASocket | null>();
+const qrCodeDataUrls = new Map<string, string | null>();
+const connectionStatuses = new Map<string, 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED'>();
+const lastErrors = new Map<string, string | null>();
+const isInitializingMap = new Map<string, boolean>();
+const qrTimeoutHandles = new Map<string, ReturnType<typeof setTimeout> | null>();
 
-// Use process.cwd() so the path is always relative to the project root
-const authFolder = path.join(process.cwd(), 'baileys_auth');
+function getAuthFolder(adminId: string): string {
+  return path.join(process.cwd(), `baileys_auth/auth_admin_${adminId}`);
+}
 
-function clearQrTimeout() {
-  if (qrTimeoutHandle) {
-    clearTimeout(qrTimeoutHandle);
-    qrTimeoutHandle = null;
+function clearQrTimeout(adminId: string) {
+  const handle = qrTimeoutHandles.get(adminId);
+  if (handle) {
+    clearTimeout(handle);
+    qrTimeoutHandles.set(adminId, null);
   }
 }
 
-export async function initWhatsApp() {
+export async function initWhatsApp(adminId: string) {
+  const isInitializing = isInitializingMap.get(adminId) || false;
+  const connectionStatus = connectionStatuses.get(adminId) || 'DISCONNECTED';
+
   if (isInitializing || connectionStatus === 'CONNECTED') {
-    console.log(`[Baileys] initWhatsApp skipped. isInitializing=${isInitializing}, status=${connectionStatus}`);
+    console.log(`[Baileys][${adminId}] initWhatsApp skipped. isInitializing=${isInitializing}, status=${connectionStatus}`);
     return;
   }
-  isInitializing = true;
-  connectionStatus = 'CONNECTING';
-  lastError = null;
-  qrCodeDataUrl = null;
 
-  console.log(`[Baileys] Iniciando conexión. authFolder=${authFolder}`);
+  isInitializingMap.set(adminId, true);
+  connectionStatuses.set(adminId, 'CONNECTING');
+  lastErrors.set(adminId, null);
+  qrCodeDataUrls.set(adminId, null);
+
+  const authFolder = getAuthFolder(adminId);
+  console.log(`[Baileys][${adminId}] Iniciando conexión. authFolder=${authFolder}`);
 
   // Safety timeout: if no QR is emitted within 45s, reset so user can retry
-  clearQrTimeout();
-  qrTimeoutHandle = setTimeout(() => {
-    if (connectionStatus === 'CONNECTING' && !qrCodeDataUrl) {
-      console.warn('[Baileys] Timeout: No se recibió QR en 45s. Reiniciando estado...');
-      lastError = 'Timeout al generar QR. Intenta nuevamente.';
-      connectionStatus = 'DISCONNECTED';
-      isInitializing = false;
+  clearQrTimeout(adminId);
+  const timeoutHandle = setTimeout(() => {
+    const currentStatus = connectionStatuses.get(adminId) || 'DISCONNECTED';
+    const currentQR = qrCodeDataUrls.get(adminId);
+    if (currentStatus === 'CONNECTING' && !currentQR) {
+      console.warn(`[Baileys][${adminId}] Timeout: No se recibió QR en 45s. Reiniciando estado...`);
+      lastErrors.set(adminId, 'Timeout al generar QR. Intenta nuevamente.');
+      connectionStatuses.set(adminId, 'DISCONNECTED');
+      isInitializingMap.set(adminId, false);
+      const sock = activeSockets.get(adminId);
       if (sock) {
         try { sock.end(undefined); } catch (_) {}
-        sock = null;
+        activeSockets.set(adminId, null);
       }
     }
   }, 45000);
+  qrTimeoutHandles.set(adminId, timeoutHandle);
 
   try {
     if (!fs.existsSync(authFolder)) {
       fs.mkdirSync(authFolder, { recursive: true });
-      console.log(`[Baileys] Auth folder creado: ${authFolder}`);
+      console.log(`[Baileys][${adminId}] Auth folder creado: ${authFolder}`);
     }
 
     const { state, saveCreds } = await useMultiFileAuthState(authFolder);
-    console.log('[Baileys] Auth state cargado correctamente.');
+    console.log(`[Baileys][${adminId}] Auth state cargado correctamente.`);
 
     // Fetch the latest WhatsApp Web version to prevent 405 handshake rejection
-    console.log('[Baileys] Obteniendo versión de WhatsApp Web más reciente...');
+    console.log(`[Baileys][${adminId}] Obteniendo versión de WhatsApp Web más reciente...`);
     let waVersion: any = [2, 3000, 1017531287]; // Fallback seguro
     try {
       const { version, isLatest } = await fetchLatestBaileysVersion();
       waVersion = version;
-      console.log(`[Baileys] Usando WhatsApp Web v${version.join('.')}, isLatest: ${isLatest}`);
+      console.log(`[Baileys][${adminId}] Usando WhatsApp Web v${version.join('.')}, isLatest: ${isLatest}`);
     } catch (verErr: any) {
-      console.warn('[Baileys] Error obteniendo versión web actual, usando fallback:', verErr?.message);
+      console.warn(`[Baileys][${adminId}] Error obteniendo versión web actual, usando fallback:`, verErr?.message);
     }
 
     const minimalLogger = {
@@ -79,12 +91,12 @@ export async function initWhatsApp() {
       trace: () => {},
       debug: () => {},
       info:  () => {},
-      warn:  (...args: any[]) => console.warn('[Baileys:warn]', ...args),
-      error: (...args: any[]) => console.error('[Baileys:error]', ...args),
-      fatal: (...args: any[]) => console.error('[Baileys:fatal]', ...args),
+      warn:  (...args: any[]) => console.warn(`[Baileys:warn][${adminId}]`, ...args),
+      error: (...args: any[]) => console.error(`[Baileys:error][${adminId}]`, ...args),
+      fatal: (...args: any[]) => console.error(`[Baileys:fatal][${adminId}]`, ...args),
     };
 
-    sock = makeWASocket({
+    const sock = makeWASocket({
       version: waVersion,
       auth: state,
       printQRInTerminal: false,
@@ -95,84 +107,94 @@ export async function initWhatsApp() {
       keepAliveIntervalMs: 30000,
     });
 
+    activeSockets.set(adminId, sock);
+
     sock.ev.on('creds.update', saveCreds);
 
     sock.ev.on('connection.update', async (update) => {
       const { connection, lastDisconnect, qr } = update;
 
-      console.log(`[Baileys] connection.update → connection=${connection}, hasQR=${!!qr}`);
+      console.log(`[Baileys][${adminId}] connection.update → connection=${connection}, hasQR=${!!qr}`);
 
       if (qr) {
-        clearQrTimeout(); // QR received — cancel timeout
+        clearQrTimeout(adminId); // QR received — cancel timeout
         try {
-          qrCodeDataUrl = await QRCode.toDataURL(qr);
-          console.log('[Baileys] QR generado e imagen dataURL creada.');
+          const dataUrl = await QRCode.toDataURL(qr);
+          qrCodeDataUrls.set(adminId, dataUrl);
+          console.log(`[Baileys][${adminId}] QR generado e imagen dataURL creada.`);
         } catch (qrErr) {
-          console.error('[Baileys QR Error]', qrErr);
-          lastError = 'Error al generar imagen QR.';
+          console.error(`[Baileys][${adminId}] QR Error:`, qrErr);
+          lastErrors.set(adminId, 'Error al generar imagen QR.');
         }
       }
 
       if (connection === 'close') {
-        clearQrTimeout();
+        clearQrTimeout(adminId);
         const statusCode = (lastDisconnect?.error as any)?.output?.statusCode;
         const isLoggedOut = statusCode === DisconnectReason.loggedOut;
         const isInvalidSession = statusCode === 405;
 
-        console.log(`[Baileys] Conexión cerrada. StatusCode=${statusCode} loggedOut=${isLoggedOut} invalidSession=${isInvalidSession}`);
+        console.log(`[Baileys][${adminId}] Conexión cerrada. StatusCode=${statusCode} loggedOut=${isLoggedOut} invalidSession=${isInvalidSession}`);
 
-        connectionStatus = 'DISCONNECTED';
-        qrCodeDataUrl = null;
-        sock = null;
-        isInitializing = false;
+        connectionStatuses.set(adminId, 'DISCONNECTED');
+        qrCodeDataUrls.set(adminId, null);
+        activeSockets.set(adminId, null);
+        isInitializingMap.set(adminId, false);
 
         if (isLoggedOut || isInvalidSession) {
           if (fs.existsSync(authFolder)) {
             try {
               fs.rmSync(authFolder, { recursive: true, force: true });
-              console.log('[Baileys] Auth folder eliminado.');
+              console.log(`[Baileys][${adminId}] Auth folder eliminado.`);
             } catch (rmErr) {
-              console.error('[Baileys] Error eliminando auth folder:', rmErr);
+              console.error(`[Baileys][${adminId}] Error eliminando auth folder:`, rmErr);
             }
           }
-          lastError = `Sesión inválida (${statusCode}). Por favor presiona "Conectar" para escanear un nuevo QR.`;
+          lastErrors.set(adminId, `Sesión inválida (${statusCode}). Por favor presiona "Conectar" para escanear un nuevo QR.`);
         } else {
-          console.log('[Baileys] Reconectando en 6 segundos...');
-          setTimeout(() => { initWhatsApp(); }, 6000);
+          console.log(`[Baileys][${adminId}] Reconectando en 6 segundos...`);
+          setTimeout(() => { initWhatsApp(adminId); }, 6000);
         }
       } else if (connection === 'open') {
-        clearQrTimeout();
-        console.log('[Baileys] ✅ WhatsApp conectado exitosamente.');
-        connectionStatus = 'CONNECTED';
-        qrCodeDataUrl = null;
-        lastError = null;
-        isInitializing = false;
+        clearQrTimeout(adminId);
+        console.log(`[Baileys][${adminId}] ✅ WhatsApp conectado exitosamente.`);
+        connectionStatuses.set(adminId, 'CONNECTED');
+        qrCodeDataUrls.set(adminId, null);
+        lastErrors.set(adminId, null);
+        isInitializingMap.set(adminId, false);
       }
     });
   } catch (err: any) {
-    clearQrTimeout();
-    console.error('[Baileys Init Error]', err);
-    lastError = err?.message || 'Error desconocido al iniciar WhatsApp.';
-    connectionStatus = 'DISCONNECTED';
-    isInitializing = false;
+    clearQrTimeout(adminId);
+    console.error(`[Baileys][${adminId}] Init Error:`, err);
+    lastErrors.set(adminId, err?.message || 'Error desconocido al iniciar WhatsApp.');
+    connectionStatuses.set(adminId, 'DISCONNECTED');
+    isInitializingMap.set(adminId, false);
   }
 }
 
-export function getWhatsAppStatus() {
+export function getWhatsAppStatus(adminId: string) {
+  const status = connectionStatuses.get(adminId) || 'DISCONNECTED';
+  const qr = qrCodeDataUrls.get(adminId);
+  const error = lastErrors.get(adminId) || null;
+
   return {
-    status: connectionStatus,
-    hasQR: !!qrCodeDataUrl,
-    error: lastError,
+    status,
+    hasQR: !!qr,
+    error,
   };
 }
 
-export function getWhatsAppQR() {
-  return qrCodeDataUrl;
+export function getWhatsAppQR(adminId: string) {
+  return qrCodeDataUrls.get(adminId) || null;
 }
 
-export async function sendWhatsAppMessage(phoneNumber: string, message: string): Promise<boolean> {
-  if (!sock || connectionStatus !== 'CONNECTED') {
-    console.warn('[Baileys Send Warning] WhatsApp no está conectado.');
+export async function sendWhatsAppMessage(adminId: string, phoneNumber: string, message: string): Promise<boolean> {
+  const sock = activeSockets.get(adminId);
+  const status = connectionStatuses.get(adminId) || 'DISCONNECTED';
+
+  if (!sock || status !== 'CONNECTED') {
+    console.warn(`[Baileys][${adminId}] Send Warning: WhatsApp no está conectado.`);
     return false;
   }
 
@@ -184,26 +206,29 @@ export async function sendWhatsAppMessage(phoneNumber: string, message: string):
     const jid = `${cleanNumber}@s.whatsapp.net`;
 
     await sock.sendMessage(jid, { text: message });
-    console.log(`[Baileys Message Sent] A: ${jid}`);
+    console.log(`[Baileys][${adminId}] Mensaje enviado a: ${jid}`);
     return true;
   } catch (err) {
-    console.error(`[Baileys Send Error] Error enviando mensaje a ${phoneNumber}:`, err);
+    console.error(`[Baileys][${adminId}] Send Error enviando a ${phoneNumber}:`, err);
     return false;
   }
 }
 
-export async function disconnectWhatsApp() {
-  clearQrTimeout();
+export async function disconnectWhatsApp(adminId: string) {
+  clearQrTimeout(adminId);
+  const sock = activeSockets.get(adminId);
   if (sock) {
     try { await sock.logout(); } catch (_e) {}
-    sock = null;
+    activeSockets.set(adminId, null);
   }
-  connectionStatus = 'DISCONNECTED';
-  qrCodeDataUrl = null;
-  lastError = null;
-  isInitializing = false;
+  connectionStatuses.set(adminId, 'DISCONNECTED');
+  qrCodeDataUrls.set(adminId, null);
+  lastErrors.set(adminId, null);
+  isInitializingMap.set(adminId, false);
+
+  const authFolder = getAuthFolder(adminId);
   if (fs.existsSync(authFolder)) {
     fs.rmSync(authFolder, { recursive: true, force: true });
   }
-  console.log('[Baileys] Desconectado y credenciales eliminadas.');
+  console.log(`[Baileys][${adminId}] Desconectado y credenciales eliminadas.`);
 }

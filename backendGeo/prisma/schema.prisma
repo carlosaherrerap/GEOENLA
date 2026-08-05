@@ -132,6 +132,7 @@ model supervisors {
   ubiety       ubieties?    @relation(fields: [id_ubiety], references: [id], onDelete: SetNull)
   schedule     schedules?   @relation(fields: [id_turno], references: [id], onDelete: SetNull)
   users        users[]
+  whatsappLogsReceived whatsapp_logs[] @relation("ReceiverWspLogs")
 
   @@map("supervisores")
 }
@@ -160,6 +161,7 @@ model users {
   chats1         chats[]          @relation("User1")
   chats2         chats[]          @relation("User2")
   talks          talks[]
+  whatsappLogsSent     whatsapp_logs[]  @relation("AdminWspLogs")
 
   @@map("usuarios")
 }
@@ -376,4 +378,19 @@ model sync_queues {
   @@index([id_user, status])
   @@index([status])
   @@map("colas_sincronizacion")
+}
+
+model whatsapp_logs {
+  id          String      @id @default(uuid())
+  id_admin    String      @db.VarChar(36)
+  id_receiver String      @db.VarChar(36)
+  phone       String      @db.VarChar(20)
+  message     String      @db.Text
+  sede_reg    String      @db.VarChar(100)
+  sent_at     DateTime    @default(now()) @db.Timestamp(0)
+
+  admin       users       @relation("AdminWspLogs", fields: [id_admin], references: [id], onDelete: Cascade)
+  receiver    supervisors @relation("ReceiverWspLogs", fields: [id_receiver], references: [id], onDelete: Cascade)
+
+  @@map("logs_whatsapp")
 }
