@@ -66,7 +66,7 @@ async function handleLogin() {
   try {
     const { data } = await api.post('/login', form.value)
 
-    if (data.user?.rol !== 'admin') {
+    if (data.user?.rol !== 'admin' && data.user?.rol !== 'su') {
       error.value = 'Acceso denegado. El portal administrativo está reservado para administradores.'
       return
     }

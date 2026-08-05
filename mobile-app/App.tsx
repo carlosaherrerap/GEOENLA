@@ -35,8 +35,10 @@ function MainAppContent() {
     autoHangupMs: number;
   } | null>(null);
   const soundRef = React.useRef<any>(null);
+  const isCallActiveRef = React.useRef<boolean>(false);
 
   const startCallAudio = async (url: string) => {
+    isCallActiveRef.current = true;
     try {
       await Audio.setAudioModeAsync({
         playsInSilentModeIOS: true,
@@ -48,6 +50,14 @@ function MainAppContent() {
         { uri: url },
         { shouldPlay: true, isLooping: true, volume: 1.0 }
       );
+
+      // Si la llamada fue cancelada durante la carga del audio, abortar reproducción
+      if (!isCallActiveRef.current) {
+        await sound.stopAsync();
+        await sound.unloadAsync();
+        return;
+      }
+
       soundRef.current = sound;
     } catch (err) {
       console.warn('[AudioCall] Error playing call audio:', err);
@@ -77,6 +87,7 @@ function MainAppContent() {
   };
 
   const hangupCall = () => {
+    isCallActiveRef.current = false;
     setActiveCall(null);
     stopCallAudio();
     stopVibration();

@@ -105,7 +105,7 @@
 
         <!-- Botón Ver Chats -->
         <div style="margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 16px;">
-          <button class="btn btn-secondary" @click="openChatsModal" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;">
+          <button class="btn btn-secondary" @click="goToChatsView" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;">
             <i class="ph ph-chat-circle-text" style="font-size: 1.2rem;"></i> VER CHATS
           </button>
         </div>
@@ -152,59 +152,15 @@
       </div>
     </div>
 
-    <!-- MODAL DE CHATS -->
-    <div v-if="showChatsModal" class="modal-backdrop" @click.self="showChatsModal = false">
-      <div class="modal-card">
-        <div class="modal-header">
-          <h3>Mensajes de WhatsApp Enviados</h3>
-          <button class="close-btn" @click="showChatsModal = false">&times;</button>
-        </div>
-
-        <div class="modal-body">
-          <!-- Filtro para el Superusuario (su) -->
-          <div v-if="userRole === 'su'" class="filter-bar">
-            <label style="font-weight: 600; font-size: 0.88rem; color: var(--text-heading);">Sede Regional:</label>
-            <select v-model="selectedSedeFilter" @change="fetchChats" class="select-input">
-              <option value="">Todas las regiones</option>
-              <option value="LIMA">Lima</option>
-              <option value="AREQUIPA">Arequipa</option>
-              <option value="LA LIBERTAD">La Libertad</option>
-            </select>
-          </div>
-
-          <div v-if="loadingChats" style="text-align: center; padding: 40px 0;">
-            <i class="ph ph-spinner spin" style="font-size: 2rem; color: var(--primary-color);"></i>
-            <p style="margin-top: 10px; color: var(--text-muted); font-size: 0.88rem;">Cargando historial...</p>
-          </div>
-
-          <div v-else-if="chatLogs.length === 0" style="text-align: center; padding: 40px 0; color: var(--text-muted); font-size: 0.88rem;">
-            No hay mensajes de WhatsApp registrados.
-          </div>
-
-          <div v-else class="chat-list">
-            <div v-for="msg in chatLogs" :key="msg.id" class="chat-item">
-              <div class="chat-meta">
-                <span class="chat-sender">Enviado por: <strong>{{ msg.admin?.supervisor ? `${msg.admin.supervisor.nombres} ${msg.admin.supervisor.ape_pat}` : msg.admin?.username }}</strong> ({{ msg.sede_reg }})</span>
-                <span class="chat-time">{{ formatTime(msg.sent_at) }}</span>
-              </div>
-              <div class="chat-receiver">
-                Para: <strong>{{ msg.receiver ? `${msg.receiver.nombres} ${msg.receiver.ape_pat} ${msg.receiver.ape_mat}` : 'Desconocido' }}</strong> (Teléfono: {{ msg.phone }})
-              </div>
-              <div class="chat-bubble">
-                {{ msg.message }}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import api from '../services/api'
 
+const router = useRouter()
 const status = ref('DISCONNECTED')
 const qrImage = ref(null)
 const loading = ref(false)
@@ -217,11 +173,9 @@ const sedeReg = ref('Cargando...')
 const sedeJuris = ref('Cargando...')
 const userRole = ref('admin')
 
-// Modal/logs states
-const showChatsModal = ref(false)
-const chatLogs = ref([])
-const loadingChats = ref(false)
-const selectedSedeFilter = ref('')
+function goToChatsView() {
+  router.push('/whatsapp-messages')
+}
 
 const statusBadgeClass = computed(() => {
   if (status.value === 'CONNECTED') return 'badge-success'
@@ -331,26 +285,7 @@ async function disconnectWhatsApp() {
   startNormalPoll()
 }
 
-async function fetchChats() {
-  loadingChats.value = true
-  try {
-    let url = '/whatsapp/messages'
-    if (userRole.value === 'su' && selectedSedeFilter.value) {
-      url += `?sede_reg=${encodeURIComponent(selectedSedeFilter.value)}`
-    }
-    const res = await api.get(url)
-    chatLogs.value = res.data
-  } catch (err) {
-    console.error('Error cargando historial de WhatsApp:', err)
-  } finally {
-    loadingChats.value = false
-  }
-}
 
-function openChatsModal() {
-  showChatsModal.value = true
-  fetchChats()
-}
 
 function formatTime(dateStr) {
   if (!dateStr) return ''
@@ -477,117 +412,7 @@ onUnmounted(() => {
   display: inline-block;
 }
 
-/* MODAL STYLES */
-.modal-backdrop {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1000;
-}
 
-.modal-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  width: 650px;
-  max-width: 90%;
-  max-height: 85%;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
-}
-
-.modal-header {
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border-color);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.modal-header h3 {
-  margin: 0;
-  font-size: 1.15rem;
-  font-weight: 700;
-  color: var(--text-heading);
-}
-
-.close-btn {
-  background: none;
-  border: none;
-  font-size: 1.5rem;
-  cursor: pointer;
-  color: var(--text-muted);
-}
-
-.modal-body {
-  padding: 20px;
-  overflow-y: auto;
-  flex: 1;
-  text-align: left;
-}
-
-.filter-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 20px;
-  background: var(--bg-hover);
-  padding: 10px 14px;
-  border-radius: 8px;
-}
-
-.select-input {
-  padding: 6px 12px;
-  border-radius: 6px;
-  border: 1px solid var(--border-color);
-  background: var(--bg-card);
-  color: var(--text-heading);
-}
-
-.chat-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.chat-item {
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  padding: 12px 16px;
-  background: var(--bg-card);
-}
-
-.chat-meta {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.8rem;
-  color: var(--text-muted);
-  margin-bottom: 6px;
-}
-
-.chat-receiver {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--text-heading);
-  margin-bottom: 10px;
-}
-
-.chat-bubble {
-  font-size: 0.88rem;
-  background: var(--bg-hover);
-  padding: 10px 14px;
-  border-radius: 8px;
-  color: var(--text-heading);
-  white-space: pre-line;
-  line-height: 1.4;
-}
 
 @keyframes spin {
   from { transform: rotate(0deg); }

@@ -136,6 +136,15 @@ export async function initWhatsApp(adminId: string) {
 
         console.log(`[Baileys][${adminId}] Conexión cerrada. StatusCode=${statusCode} loggedOut=${isLoggedOut} invalidSession=${isInvalidSession}`);
 
+        const currentStatus = connectionStatuses.get(adminId);
+        if (currentStatus === 'DISCONNECTED') {
+          console.log(`[Baileys][${adminId}] Conexión cerrada voluntariamente. No se reintentará reconexión.`);
+          qrCodeDataUrls.set(adminId, null);
+          activeSockets.set(adminId, null);
+          isInitializingMap.set(adminId, false);
+          return;
+        }
+
         connectionStatuses.set(adminId, 'DISCONNECTED');
         qrCodeDataUrls.set(adminId, null);
         activeSockets.set(adminId, null);

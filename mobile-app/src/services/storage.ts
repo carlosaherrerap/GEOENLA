@@ -125,8 +125,8 @@ class OfflineStorageService {
     return [...this.trackingQueue];
   }
 
-  public async clearSyncedTracking(count: number): Promise<void> {
-    this.trackingQueue.splice(0, count);
+  public async clearSyncedTracking(syncedPoints: TrackingPoint[]): Promise<void> {
+    this.trackingQueue = this.trackingQueue.filter(item => !syncedPoints.includes(item));
     await this.persistTrackingQueue();
     this.lastSyncedAt = new Date().toISOString();
   }

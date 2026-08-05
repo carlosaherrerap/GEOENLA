@@ -235,7 +235,7 @@ class LocationTrackingService {
     console.log(`[SyncOffline] Sincronizando ${pendingPoints.length} puntos offline acumulados...`);
     try {
       await apiService.sendTrackingBatch(pendingPoints);
-      await offlineStorage.clearSyncedTracking(pendingPoints.length);
+      await offlineStorage.clearSyncedTracking(pendingPoints);
       console.log('[SyncOffline] Puntos offline sincronizados con éxito.');
     } catch (err) {
       console.log('[SyncOffline] El servidor aún no es alcanzable. Se mantienen en SQLite.');

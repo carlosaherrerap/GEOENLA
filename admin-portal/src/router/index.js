@@ -56,6 +56,11 @@ const routes = [
         name: 'Connectivity',
         component: () => import('../views/ConnectivityView.vue'),
       },
+      {
+        path: 'whatsapp-messages',
+        name: 'WhatsappMessages',
+        component: () => import('../views/WhatsappMessagesView.vue'),
+      },
     ]
   },
   {

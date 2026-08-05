@@ -10,6 +10,7 @@ import { startInactivityEngine, registerCallEmitter } from './services/inactivit
 import { prisma } from './prismaClient';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
+import path from 'path';
 
 // Fix global BigInt JSON serialization in Express
 (BigInt.prototype as any).toJSON = function () {
@@ -73,10 +74,13 @@ wss.on('connection', (ws, req) => {
       console.log(`[WebSocket] Usuario ${userId} conectado.`);
 
       ws.on('close', () => {
-        connectedClients.delete(userId);
+        if (connectedClients.get(userId) === ws) {
+          connectedClients.delete(userId);
+        }
         console.log(`[WebSocket] Usuario ${userId} desconectado.`);
       });
     }
+
   } catch (err) {
     ws.close(4001, 'Unauthorized');
   }
@@ -96,6 +100,7 @@ registerCallEmitter((userId, payload) => {
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use('/audio', express.static(path.join(__dirname, 'src/audio')));
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -222,8 +227,8 @@ app.post('/api/login', async (req, res) => {
         const payload = {
           type: 'AUTOMATED_CALL',
           message: `Llamada de prueba: Hola ${user.username}, esta es una simulación de llamada de advertencia de inactividad de GEOENLA.`,
-          audioUrl: 'https://actions.google.com/sounds/v1/alarms/beep_short.ogg',
-          autoHangupMs: 10000,
+          audioUrl: '/audio/bicecly.mp3',
+          autoHangupMs: 12000,
         };
         ws.send(JSON.stringify(payload));
         console.log(`[WebSocket] Llamada de prueba de 1 minuto enviada a usuario ${user.username} (${user.id}).`);
@@ -630,11 +635,11 @@ protectedRoutes.post('/trackings', async (req: any, res) => {
   const { id_activity, lat, lng, accuracy, speed, battery_level, recorded_at } = req.body;
   const serverNow = new Date();
 
-  // Prevenir manipulación de reloj del teléfono o VPN: si la hora del cliente difiere > 5 min del servidor, usar hora real del servidor
+  // Prevenir manipulación de reloj del teléfono o VPN: rechazar/sobrescribir si la hora del cliente es futura (> 1 min)
   let recordedDate = serverNow;
   if (recorded_at) {
     const clientDate = new Date(recorded_at);
-    if (!isNaN(clientDate.getTime()) && Math.abs(serverNow.getTime() - clientDate.getTime()) < 5 * 60 * 1000) {
+    if (!isNaN(clientDate.getTime()) && clientDate.getTime() <= serverNow.getTime() + 60000) {
       recordedDate = clientDate;
     }
   }
@@ -1387,7 +1392,22 @@ protectedRoutes.get('/whatsapp/messages', async (req: any, res: any) => {
     let whereClause: any = {};
 
     if (rol === 'admin') {
-      whereClause.id_admin = id;
+      const adminInfo = await prisma.users.findUnique({
+        where: { id },
+        include: {
+          supervisor: {
+            include: {
+              location: true
+            }
+          }
+        }
+      });
+      const adminSedeReg = adminInfo?.supervisor?.location?.sede_reg;
+      if (adminSedeReg) {
+        whereClause.sede_reg = adminSedeReg;
+      } else {
+        whereClause.id_admin = id;
+      }
     } else if (rol === 'su') {
       if (sede_reg) {
         whereClause.sede_reg = String(sede_reg);
