@@ -7,6 +7,7 @@ import { uploadToR2 } from './r2Service';
 import { setLatestUserLocation, getLatestUserLocations } from './redisClient';
 import { initWhatsApp, getWhatsAppStatus, getWhatsAppQR, disconnectWhatsApp } from './services/whatsapp';
 import { startInactivityEngine, registerCallEmitter } from './services/inactivityEngine';
+import { updateDatabaseFromExcel } from './services/excelUpdater';
 import { prisma } from './prismaClient';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -227,8 +228,9 @@ app.post('/api/login', async (req, res) => {
         const payload = {
           type: 'AUTOMATED_CALL',
           message: `Llamada de prueba: Hola ${user.username}, esta es una simulación de llamada de advertencia de inactividad de GEOENLA.`,
+          ringtoneUrl: '/audio/november.mp3',
           audioUrl: '/audio/bicecly.mp3',
-          autoHangupMs: 12000,
+          autoHangupMs: 25000,
         };
         ws.send(JSON.stringify(payload));
         console.log(`[WebSocket] Llamada de prueba de 1 minuto enviada a usuario ${user.username} (${user.id}).`);
@@ -1379,6 +1381,15 @@ adminRoutes.post('/admin/whatsapp/connect', handleWhatsAppConnect);
 adminRoutes.post('/whatsapp/disconnect', handleWhatsAppDisconnect);
 adminRoutes.post('/admin/whatsapp/disconnect', handleWhatsAppDisconnect);
 
+adminRoutes.post('/admin/db/sync-excel', async (_req: any, res: any) => {
+  try {
+    const result = await updateDatabaseFromExcel();
+    res.json({ message: 'Sincronización de base de datos desde Excel completada.', result });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message || 'Error en sincronización desde Excel.' });
+  }
+});
+
 // Endpoint de Historial de WhatsApp (disponible para admins y su)
 protectedRoutes.get('/whatsapp/messages', async (req: any, res: any) => {
   const { rol, id } = req.user;
@@ -1798,6 +1809,11 @@ runAutoSeed().then(() => {
   } catch (err) {
     console.error('[WhatsApp] Error reconectando sesiones guardadas:', err);
   }
+
+  // Sincronización automática de la base de datos desde update.xlsx al iniciar
+  updateDatabaseFromExcel().catch((err) => {
+    console.error('[ExcelUpdater] Error en sincronización inicial:', err);
+  });
 
   startInactivityEngine();
   server.listen(Number(PORT), '0.0.0.0', () => {

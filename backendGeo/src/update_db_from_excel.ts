@@ -1,0 +1,137 @@
+import dotenv from 'dotenv';
+import path from 'path';
+dotenv.config({ path: path.join(__dirname, '../.env') });
+
+import ExcelJS from 'exceljs';
+import { prisma } from '../prismaClient';
+
+async function runUpdate() {
+  console.log('=== INICIANDO ACTUALIZACIÓN DE BASE DE DATOS DESDE EXCEL ===');
+  const filePath = path.join(__dirname, 'update.xlsx');
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile(filePath);
+
+  const worksheet = workbook.worksheets[0];
+  let updatedCount = 0;
+  let skippedCount = 0;
+  let errorCount = 0;
+
+  const rows: { doc: string; sede_reg: string; telefono: string; correo: string }[] = [];
+
+  worksheet.eachRow((row, rowNumber) => {
+    if (rowNumber === 1) return; // Skip header
+
+    const values = row.values as any[];
+    const rawDoc = values[1];
+    const rawSede = values[2];
+    const rawTel = values[3];
+    const rawCorreo = values[4];
+
+    if (!rawDoc) return;
+
+    let docStr = String(rawDoc).trim();
+    if (typeof rawDoc === 'number' || (docStr.length > 0 && docStr.length < 8 && /^\d+$/.test(docStr))) {
+      docStr = docStr.padStart(8, '0');
+    }
+
+    const sede_reg = rawSede ? String(rawSede).trim() : '';
+    const telefono = rawTel ? String(rawTel).trim() : '';
+    const correo = rawCorreo ? String(rawCorreo).trim() : '';
+
+    rows.push({ doc: docStr, sede_reg, telefono, correo });
+  });
+
+  console.log(`Se encontraron ${rows.length} registros en el archivo Excel.`);
+
+  for (const item of rows) {
+    try {
+      // Buscar supervisor por documento (probar exacto o sin ceros)
+      let supervisor = await prisma.supervisors.findFirst({
+        where: { doc: item.doc },
+        include: { location: true, users: true }
+      });
+
+      if (!supervisor && /^\d+$/.test(item.doc)) {
+        const altDoc = item.doc.replace(/^0+/, '');
+        supervisor = await prisma.supervisors.findFirst({
+          where: { doc: altDoc },
+          include: { location: true, users: true }
+        });
+      }
+
+      if (!supervisor) {
+        console.warn(`[OMITIDO] No se encontró supervisor con DNI/DOC: "${item.doc}"`);
+        skippedCount++;
+        continue;
+      }
+
+      // 1. Actualizar teléfono en tabla supervisores
+      if (item.telefono) {
+        await prisma.supervisors.update({
+          where: { id: supervisor.id },
+          data: { telefono: item.telefono }
+        });
+      }
+
+      // 2. Actualizar sede_reg en la tabla sedes (locations)
+      if (item.sede_reg) {
+        if (supervisor.id_location) {
+          await prisma.locations.update({
+            where: { id: supervisor.id_location },
+            data: { sede_reg: item.sede_reg }
+          });
+        } else {
+          // Si no tenía id_location, crear o buscar una sede con esa sede_reg
+          let location = await prisma.locations.findFirst({
+            where: { sede_reg: item.sede_reg }
+          });
+          if (!location) {
+            // Buscar una ubiety existente o crear una por defecto
+            let ubi = await prisma.ubieties.findFirst();
+            if (!ubi) {
+              ubi = await prisma.ubieties.create({
+                data: { latitud: 0, longitud: 0 }
+              });
+            }
+            location = await prisma.locations.create({
+              data: {
+                sede_reg: item.sede_reg,
+                sede_juris: item.sede_reg,
+                nombre: `Sede ${item.sede_reg}`,
+                id_ubiety: ubi.id
+              }
+            });
+          }
+          await prisma.supervisors.update({
+            where: { id: supervisor.id },
+            data: { id_location: location.id }
+          });
+        }
+      }
+
+      // 3. Actualizar correo en la tabla usuarios (users) asociados al supervisor
+      if (item.correo && supervisor.users && supervisor.users.length > 0) {
+        for (const user of supervisor.users) {
+          await prisma.users.update({
+            where: { id: user.id },
+            data: { correo: item.correo }
+          });
+        }
+      }
+
+      console.log(`[ÉXITO] Actualizado supervisor DNI "${item.doc}" - Sede: "${item.sede_reg}", Tel: "${item.telefono}", Correo: "${item.correo}"`);
+      updatedCount++;
+    } catch (err: any) {
+      console.error(`[ERROR] Falló actualización para DOC "${item.doc}":`, err);
+      errorCount++;
+    }
+  }
+
+  console.log('\n=== RESUMEN DE PROCESAMIENTO ===');
+  console.log(`Total registros en Excel: ${rows.length}`);
+  console.log(`Actualizados con éxito: ${updatedCount}`);
+  console.log(`Omitidos (no encontrados): ${skippedCount}`);
+  console.log(`Errores: ${errorCount}`);
+}
+
+runUpdate().catch(console.error).finally(() => prisma.$disconnect());

@@ -41,6 +41,7 @@ function MainAppContent() {
   } | null>(null);
 
   const soundRef = React.useRef<any>(null);
+  const ringtoneRef = React.useRef<any>(null);
   const isCallActiveRef = React.useRef<boolean>(false);
 
   useEffect(() => {
@@ -62,6 +63,34 @@ function MainAppContent() {
     const mins = Math.floor(sec / 60);
     const secs = sec % 60;
     return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
+
+  const startRingtoneAudio = async (url: string) => {
+    try {
+      await Audio.setAudioModeAsync({
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: true,
+        shouldDuckAndroid: true,
+      });
+
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: url },
+        { shouldPlay: true, isLooping: true, volume: 1.0 }
+      );
+      ringtoneRef.current = sound;
+    } catch (err) {
+      console.warn('[Ringtone] Error playing ringtone audio:', err);
+    }
+  };
+
+  const stopRingtoneAudio = async () => {
+    if (ringtoneRef.current) {
+      try {
+        await ringtoneRef.current.stopAsync();
+        await ringtoneRef.current.unloadAsync();
+      } catch (_e) {}
+      ringtoneRef.current = null;
+    }
   };
 
   const startCallAudio = async (url: string) => {
@@ -127,7 +156,8 @@ function MainAppContent() {
 
   const answerCall = async () => {
     if (!activeCall) return;
-    console.log('[Call] Usuario contestó la llamada. Iniciando reproducción de audio...');
+    console.log('[Call] Usuario contestó la llamada. Deteniendo tono de llamada e iniciando audio de respuesta...');
+    stopRingtoneAudio();
     stopVibration();
     setCallState('connected');
     if (activeCall.playUrl) {
@@ -140,6 +170,7 @@ function MainAppContent() {
     setCallState(null);
     setActiveCall(null);
     setCallSeconds(0);
+    stopRingtoneAudio();
     stopCallAudio();
     stopVibration();
   };
@@ -176,6 +207,12 @@ function MainAppContent() {
         console.log('[WebSocket] Mensaje recibido:', payload);
 
         if (payload.type === 'AUTOMATED_CALL') {
+          const ringtoneUrl = payload.ringtoneUrl
+            ? (payload.ringtoneUrl.startsWith('http')
+                ? payload.ringtoneUrl
+                : `${API_BASE_URL.replace('/api', '')}${payload.ringtoneUrl}`)
+            : `${API_BASE_URL.replace('/api', '')}/audio/november.mp3`;
+
           const playUrl = payload.audioUrl.startsWith('http')
             ? payload.audioUrl
             : `${API_BASE_URL.replace('/api', '')}${payload.audioUrl}`;
@@ -187,6 +224,9 @@ function MainAppContent() {
             playUrl,
           });
           setCallState('ringing');
+
+          // Reproducir tono de llamada (november.mp3)
+          startRingtoneAudio(ringtoneUrl);
 
           // Disparar la notificación del sistema con alta prioridad (para sobreponerse en pantalla)
           Notifications.scheduleNotificationAsync({
