@@ -18,6 +18,7 @@ import { API_BASE_URL } from './src/config';
 import { Audio } from 'expo-av';
 import { Vibration, Modal } from 'react-native';
 import * as Notifications from 'expo-notifications';
+import { VolumeManager } from 'react-native-volume-manager';
 
 type TabState = 'activities' | 'chat' | 'profile';
 type ViewState = 'main' | 'activity_detail' | 'device_info' | 'error_logs';
@@ -30,17 +31,48 @@ function MainAppContent() {
   const [currentView, setCurrentView] = useState<ViewState>('main');
   const [selectedActivity, setSelectedActivity] = useState<any>(null);
 
+  const [callState, setCallState] = useState<'ringing' | 'connected' | null>(null);
+  const [callSeconds, setCallSeconds] = useState<number>(0);
   const [activeCall, setActiveCall] = useState<{
     message: string;
     audioUrl: string;
     autoHangupMs: number;
+    playUrl?: string;
   } | null>(null);
+
   const soundRef = React.useRef<any>(null);
   const isCallActiveRef = React.useRef<boolean>(false);
+
+  useEffect(() => {
+    let interval: any = null;
+    if (callState === 'connected') {
+      setCallSeconds(0);
+      interval = setInterval(() => {
+        setCallSeconds((prev) => prev + 1);
+      }, 1000);
+    } else {
+      setCallSeconds(0);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [callState]);
+
+  const formatCallTime = (sec: number) => {
+    const mins = Math.floor(sec / 60);
+    const secs = sec % 60;
+    return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
 
   const startCallAudio = async (url: string) => {
     isCallActiveRef.current = true;
     try {
+      try {
+        await VolumeManager.setVolume(1.0);
+      } catch (volErr) {
+        console.warn('[VolumeManager] No se pudo establecer volumen multimedia al 100%:', volErr);
+      }
+
       await Audio.setAudioModeAsync({
         playsInSilentModeIOS: true,
         staysActiveInBackground: true,
@@ -49,10 +81,16 @@ function MainAppContent() {
 
       const { sound } = await Audio.Sound.createAsync(
         { uri: url },
-        { shouldPlay: true, isLooping: true, volume: 1.0 }
+        { shouldPlay: true, isLooping: false, volume: 1.0 }
       );
 
-      // Si la llamada fue cancelada durante la carga del audio, abortar reproducción
+      sound.setOnPlaybackStatusUpdate((status: any) => {
+        if (status.isLoaded && status.didJustFinish) {
+          console.log('[AudioCall] Audio finalizado. Cortando llamada automáticamente...');
+          hangupCall();
+        }
+      });
+
       if (!isCallActiveRef.current) {
         await sound.stopAsync();
         await sound.unloadAsync();
@@ -87,9 +125,21 @@ function MainAppContent() {
     } catch (_e) {}
   };
 
+  const answerCall = async () => {
+    if (!activeCall) return;
+    console.log('[Call] Usuario contestó la llamada. Iniciando reproducción de audio...');
+    stopVibration();
+    setCallState('connected');
+    if (activeCall.playUrl) {
+      startCallAudio(activeCall.playUrl);
+    }
+  };
+
   const hangupCall = () => {
     isCallActiveRef.current = false;
+    setCallState(null);
     setActiveCall(null);
+    setCallSeconds(0);
     stopCallAudio();
     stopVibration();
   };
@@ -126,20 +176,22 @@ function MainAppContent() {
         console.log('[WebSocket] Mensaje recibido:', payload);
 
         if (payload.type === 'AUTOMATED_CALL') {
-          setActiveCall({
-            message: payload.message,
-            audioUrl: payload.audioUrl,
-            autoHangupMs: payload.autoHangupMs || 12000,
-          });
-
           const playUrl = payload.audioUrl.startsWith('http')
             ? payload.audioUrl
             : `${API_BASE_URL.replace('/api', '')}${payload.audioUrl}`;
 
+          setActiveCall({
+            message: payload.message,
+            audioUrl: payload.audioUrl,
+            autoHangupMs: payload.autoHangupMs || 25000,
+            playUrl,
+          });
+          setCallState('ringing');
+
           // Disparar la notificación del sistema con alta prioridad (para sobreponerse en pantalla)
           Notifications.scheduleNotificationAsync({
             content: {
-              title: '⚠️ ADVERTENCIA DE INACTIVIDAD',
+              title: '⚠️ LLAMADA ENTRANTE DE INACTIVIDAD',
               body: payload.message,
               sound: true,
               priority: Notifications.AndroidNotificationPriority.MAX,
@@ -148,13 +200,7 @@ function MainAppContent() {
             trigger: null,
           }).catch((e) => console.warn('[Notifications] Error scheduling call push:', e));
 
-          startCallAudio(playUrl);
           startVibration();
-
-          const hangupTime = payload.autoHangupMs || 12000;
-          setTimeout(() => {
-            hangupCall();
-          }, hangupTime);
         }
       } catch (err) {
         console.error('[WebSocket] Error parseando mensaje:', err);
@@ -306,26 +352,46 @@ function MainAppContent() {
         )}
 
         {/* Modal para llamadas de advertencia de inactividad */}
-        {activeCall && (
+        {activeCall && callState && (
           <Modal transparent animationType="fade" visible={!!activeCall}>
             <View style={styles.callOverlay}>
               <View style={styles.callCard}>
-                <View style={styles.callHeader}>
-                  <Ionicons name="alert-circle" size={48} color="#e11d48" style={styles.pulseIcon} />
-                  <Text style={styles.callTitle}>LLAMADA ENTRANTE</Text>
-                  <Text style={styles.callSubtitle}>Área de Monitoreo GEOENLA</Text>
-                </View>
-                <Text style={styles.callMessage}>{activeCall.message}</Text>
-                <View style={styles.callActions}>
-                  <TouchableOpacity style={[styles.callBtn, styles.callBtnAccept]} onPress={hangupCall}>
-                    <Ionicons name="checkmark-circle" size={20} color="#ffffff" />
-                    <Text style={styles.callBtnLabel}>Aceptar</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.callBtn, styles.callBtnHangup]} onPress={hangupCall}>
-                    <Ionicons name="close-circle" size={20} color="#ffffff" />
-                    <Text style={styles.callBtnLabel}>Colgar</Text>
-                  </TouchableOpacity>
-                </View>
+                {callState === 'ringing' ? (
+                  <>
+                    <View style={styles.callHeader}>
+                      <Ionicons name="alert-circle" size={54} color="#e11d48" style={styles.pulseIcon} />
+                      <Text style={styles.callTitle}>LLAMADA ENTRANTE</Text>
+                      <Text style={styles.callSubtitle}>Área de Monitoreo GEOENLA</Text>
+                    </View>
+                    <Text style={styles.callMessage}>{activeCall.message}</Text>
+                    <View style={styles.callActions}>
+                      <TouchableOpacity style={[styles.callBtn, styles.callBtnAccept]} onPress={answerCall}>
+                        <Ionicons name="call" size={20} color="#ffffff" />
+                        <Text style={styles.callBtnLabel}>Contestar</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.callBtn, styles.callBtnHangup]} onPress={hangupCall}>
+                        <Ionicons name="close-circle" size={20} color="#ffffff" />
+                        <Text style={styles.callBtnLabel}>Rechazar</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <View style={styles.callHeader}>
+                      <Ionicons name="call" size={54} color="#10b981" style={styles.pulseIcon} />
+                      <Text style={[styles.callTitle, { color: '#10b981' }]}>EN LLAMADA</Text>
+                      <Text style={styles.callTimerText}>{formatCallTime(callSeconds)}</Text>
+                      <Text style={styles.callSubtitle}>Área de Monitoreo GEOENLA</Text>
+                    </View>
+                    <Text style={styles.callMessage}>{activeCall.message}</Text>
+                    <View style={styles.callActions}>
+                      <TouchableOpacity style={[styles.callBtn, styles.callBtnHangup, { width: '85%' }]} onPress={hangupCall}>
+                        <Ionicons name="call" size={20} color="#ffffff" style={{ transform: [{ rotate: '135deg' }] }} />
+                        <Text style={styles.callBtnLabel}>Finalizar Llamada</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
               </View>
             </View>
           </Modal>
@@ -412,6 +478,14 @@ const styles = StyleSheet.create({
     color: '#5C5E62',
     fontWeight: '600',
     marginTop: 4,
+  },
+  callTimerText: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#171A20',
+    marginTop: 6,
+    marginBottom: 2,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
   },
   callMessage: {
     fontSize: 16,
