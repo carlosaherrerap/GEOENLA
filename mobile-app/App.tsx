@@ -13,13 +13,21 @@ import { ErrorLogsScreen } from './src/screens/ErrorLogsScreen';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { locationTracking } from './src/services/location';
 import { offlineStorage } from './src/services/storage';
-import { getAuthToken } from './src/services/api';
+import { getAuthToken, apiService } from './src/services/api';
 import { API_BASE_URL } from './src/config';
 import { Audio } from 'expo-av';
-import { Vibration, Modal } from 'react-native';
+import { Vibration, Modal, NativeModules } from 'react-native';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
-import { VolumeManager } from 'react-native-volume-manager';
+
+let SafeVolumeManager: any = null;
+try {
+  if (NativeModules.RNVolumeManager) {
+    SafeVolumeManager = require('react-native-volume-manager').VolumeManager;
+  }
+} catch (_e) {
+  console.warn('[VolumeManager] Módulo no disponible en este emulador o entorno.');
+}
 
 Notifications.setNotificationCategoryAsync('incoming_call', [
   {
@@ -137,7 +145,9 @@ function MainAppContent() {
     isCallActiveRef.current = true;
     try {
       try {
-        await VolumeManager.setVolume(1.0);
+        if (SafeVolumeManager?.setVolume) {
+          await SafeVolumeManager.setVolume(1.0);
+        }
       } catch (volErr) {
         console.warn('[VolumeManager] No se pudo establecer volumen multimedia al 100%:', volErr);
       }
@@ -239,6 +249,13 @@ function MainAppContent() {
 
     ws.onopen = () => {
       console.log('[WebSocket] Conexión establecida.');
+      // Enviar latido de presencia e inicializar coordenadas al conectar la sesión
+      apiService.updateDeviceInfo({ battery_level: 90 }).catch(() => {});
+      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
+        .then((pos) => {
+          locationTracking.processLocationUpdate(pos);
+        })
+        .catch(() => {});
     };
 
     ws.onmessage = (event: any) => {
@@ -328,6 +345,14 @@ function MainAppContent() {
     setIsLoggedIn(true);
     setActiveTab('activities');
     setCurrentView('main');
+
+    // Transmitir latido de presencia y ubicación inicial inmediatamente tras iniciar sesión
+    apiService.updateDeviceInfo({ battery_level: 90 }).catch(() => {});
+    Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.BestForNavigation })
+      .then((pos) => {
+        locationTracking.processLocationUpdate(pos);
+      })
+      .catch((err) => console.warn('[LoginSuccess] Error capturando posición inicial:', err));
   };
 
   const handleLogout = () => {

@@ -232,13 +232,17 @@ class LocationTrackingService {
       const distFromLast = calculateDistanceMeters(latitude, longitude, this.lastSavedPoint.lat, this.lastSavedPoint.lng);
       const speedVal = speed || 0;
       if (distFromLast < MIN_DISTANCE_DELTA_METERS && speedVal < 0.5) {
-        console.log(`[AntiJitter] Usuario en el mismo punto (desplazamiento: ${distFromLast.toFixed(1)}m). Ignorando ruido GPS.`);
+        console.log(`[AntiJitter] Usuario en el mismo punto (${distFromLast.toFixed(1)}m). Omitiendo guardado duplicado en DB pero enviando latido de presencia.`);
+        // Transmitir latido de presencia al backend para mantener estado ACTIVO en tiempo real (last_seen_at)
+        apiService.updateDeviceInfo({ battery_level: 90 }).catch(() => {});
         return;
       }
     }
 
     // 3. Control de intervalo de 2 minutos para guardar en base de datos
     if (now - this.lastDbSaveTimestamp < DB_SAVE_INTERVAL_MS && this.lastSavedPoint !== null) {
+      // Transmitir latido de presencia durante el intervalo intermedio
+      apiService.updateDeviceInfo({ battery_level: 90 }).catch(() => {});
       return;
     }
 
