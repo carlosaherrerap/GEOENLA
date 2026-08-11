@@ -267,9 +267,16 @@ const firstTime = computed(() => {
 })
 
 const lastTime = computed(() => {
+  const userLastSeen = selectedUserObj.value?.deviceDetail?.last_seen_at || selectedUserObj.value?.last_seen_at
   const valid = trackings.value.length > 1 ? trackings.value.slice(1) : trackings.value
-  if (valid.length === 0) return '-'
-  return new Date(valid[valid.length - 1].recorded_at).toLocaleTimeString()
+  const lastTrackingTime = valid.length > 0 ? valid[valid.length - 1].recorded_at : null
+
+  let latestDateMs = 0
+  if (userLastSeen) latestDateMs = Math.max(latestDateMs, new Date(userLastSeen).getTime())
+  if (lastTrackingTime) latestDateMs = Math.max(latestDateMs, new Date(lastTrackingTime).getTime())
+
+  if (latestDateMs === 0) return '-'
+  return new Date(latestDateMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 })
 
 function isUserActive(u) {
@@ -657,8 +664,9 @@ onMounted(async () => {
   await Promise.all([fetchUsers(), fetchActivities(), fetchAttendances()])
   await fetchTrackings()
 
-  pollInterval = setInterval(() => {
-    fetchTrackings()
+  pollInterval = setInterval(async () => {
+    await fetchUsers()
+    await fetchTrackings()
   }, 10000)
 })
 

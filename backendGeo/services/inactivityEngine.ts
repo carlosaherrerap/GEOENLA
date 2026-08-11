@@ -133,7 +133,6 @@ export async function checkWorkerInactivityEngine() {
       });
 
       // --- ESCENARIO INICIO DE JORNADA (9:00 AM - 6:00 PM): RECORDATORIO DE CONEXIÓN POR WHATSAPP ---
-      const todayStr = new Date().toISOString().split('T')[0];
       const nowLima = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Lima" }));
       const currentHour = nowLima.getHours();
       const isWorkHours = currentHour >= 9 && currentHour < 18;
