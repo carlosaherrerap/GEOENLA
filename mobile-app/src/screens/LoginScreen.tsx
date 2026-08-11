@@ -7,6 +7,10 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
 } from 'react-native';
 import { apiService } from '../services/api';
 import { locationTracking } from '../services/location';
@@ -39,7 +43,6 @@ export const LoginScreen: React.FC<Props> = ({ onLoginSuccess }) => {
       locationTracking.setUserEmail(response.user?.correo || `${username.trim()}@enlageo.com`);
       locationTracking.startTracking();
 
-      // Transmitir detalles reales del dispositivo activo al servidor automáticamente al iniciar sesión
       try {
         const devicePayload = getRealDeviceDetails();
         await apiService.updateDeviceInfo(devicePayload);
@@ -56,117 +59,197 @@ export const LoginScreen: React.FC<Props> = ({ onLoginSuccess }) => {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.card}>
-        <Text style={styles.title}>
-          Geo<Text style={styles.accent}>App</Text>
-        </Text>
-        <Text style={styles.subtitle}>Trabajadores de Campo</Text>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.card}>
+          {/* Header con Isotipo ENLA Oficial */}
+          <View style={styles.header}>
+            <View style={styles.logoBadge}>
+              <Image
+                source={require('../../assets/iconENLA.png')}
+                style={styles.logo}
+                resizeMode="contain"
+              />
+            </View>
+            <Text style={styles.title}>
+              Geo
+              <Text style={styles.colorE}>E</Text>
+              <Text style={styles.colorN}>N</Text>
+              <Text style={styles.colorL}>L</Text>
+              <Text style={styles.colorA}>A</Text>
+            </Text>
+            <Text style={styles.subtitle}>Supervisores y Monitoreo de Campo</Text>
+          </View>
 
-        <View style={styles.inputContainer}>
-          <Text style={styles.label}>Usuario</Text>
-          <TextInput
-            style={styles.input}
-            value={username}
-            onChangeText={setUsername}
-            placeholder="Ingresa tu usuario"
-            placeholderTextColor="#666688"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
+          {/* Formulario de Entrada */}
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>USUARIO</Text>
+            <TextInput
+              style={styles.input}
+              value={username}
+              onChangeText={setUsername}
+              placeholder="Ingresa tu usuario asignado"
+              placeholderTextColor="#94a3b8"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>CONTRASEÑA</Text>
+            <TextInput
+              style={styles.input}
+              value={clave}
+              onChangeText={setClave}
+              placeholder="Ingresa tu contraseña"
+              placeholderTextColor="#94a3b8"
+              secureTextEntry
+            />
+          </View>
+
+          {/* Botón de Acción */}
+          <TouchableOpacity
+            style={[styles.button, loading && styles.buttonDisabled]}
+            onPress={handleLogin}
+            disabled={loading}
+            activeOpacity={0.85}
+          >
+            {loading ? (
+              <ActivityIndicator color="#ffffff" size="small" />
+            ) : (
+              <Text style={styles.buttonText}>INICIAR SESIÓN</Text>
+            )}
+          </TouchableOpacity>
+
+          {/* Pie Institucional */}
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>
+              Instituto Nacional de Estadística e Informática (INEI)
+            </Text>
+          </View>
         </View>
-
-        <View style={styles.inputContainer}>
-          <Text style={styles.label}>Contraseña</Text>
-          <TextInput
-            style={styles.input}
-            value={clave}
-            onChangeText={setClave}
-            placeholder="••••••••"
-            placeholderTextColor="#666688"
-            secureTextEntry
-          />
-        </View>
-
-        <TouchableOpacity
-          style={styles.button}
-          onPress={handleLogin}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.buttonText}>Iniciar Sesión</Text>
-          )}
-        </TouchableOpacity>
-      </View>
-    </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ddd', // Tesla Neutral Gray (#ddd)
+    backgroundColor: '#f8fafc',
+  },
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: 'center',
-    padding: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 30,
   },
   card: {
-    backgroundColor: '#ffffff', // Tesla White Card Surface
-    borderRadius: 16,
-    padding: 28,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    paddingHorizontal: 24,
+    paddingVertical: 32,
     borderWidth: 1,
-    borderColor: '#cccccc',
+    borderColor: '#e2e8f0',
+  },
+  header: {
+    alignItems: 'center',
+    marginBottom: 28,
+  },
+  logoBadge: {
+    width: 90,
+    height: 90,
+    borderRadius: 18,
+    backgroundColor: '#ffffff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  logo: {
+    width: 82,
+    height: 82,
   },
   title: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#171A20', // Tesla Carbon Dark
-    textAlign: 'center',
+    fontSize: 30,
+    fontWeight: '800',
+    color: '#0f172a',
+    letterSpacing: 0.5,
+    marginTop: 4,
   },
-  accent: {
-    color: '#3E6AE1', // Tesla Electric Blue
+  colorE: {
+    color: '#0F5698', // Azul ENLA
+  },
+  colorN: {
+    color: '#EE8800', // Naranja ENLA
+  },
+  colorL: {
+    color: '#8E267B', // Púrpura ENLA
+  },
+  colorA: {
+    color: '#E93C6A', // Rosa ENLA
   },
   subtitle: {
-    fontSize: 14,
-    color: '#393C41',
-    textAlign: 'center',
-    marginBottom: 28,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748b',
     marginTop: 4,
-    fontWeight: '500',
+    letterSpacing: 0.3,
   },
-  inputContainer: {
-    marginBottom: 20,
+  formGroup: {
+    marginBottom: 18,
   },
   label: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
-    color: '#171A20',
-    marginBottom: 8,
-    textTransform: 'uppercase',
+    color: '#475569',
+    marginBottom: 6,
+    letterSpacing: 0.8,
   },
   input: {
     backgroundColor: '#ffffff',
-    borderRadius: 8,
+    borderRadius: 10,
     paddingHorizontal: 16,
-    height: 48,
-    color: '#171A20',
+    height: 50,
+    color: '#0f172a',
     fontSize: 15,
     borderWidth: 1,
-    borderColor: '#cccccc',
+    borderColor: '#cbd5e1',
   },
   button: {
-    backgroundColor: '#3E6AE1', // Tesla Electric Blue CTA
-    borderRadius: 4,
-    height: 48,
+    backgroundColor: '#0F5698',
+    borderRadius: 10,
+    height: 50,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 12,
+    marginTop: 10,
+  },
+  buttonDisabled: {
+    opacity: 0.7,
   },
   buttonText: {
     color: '#ffffff',
     fontSize: 14,
     fontWeight: '700',
-    letterSpacing: 0.8,
+    letterSpacing: 1,
+  },
+  footer: {
+    marginTop: 28,
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+    paddingTop: 16,
+  },
+  footerText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#94a3b8',
+    textAlign: 'center',
   },
 });

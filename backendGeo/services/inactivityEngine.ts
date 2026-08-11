@@ -8,6 +8,7 @@ const dailyNotifiedUsers = new Map<string, {
   sent10m: boolean;
   sent20m: boolean;
   warningsCount: number;
+  last9amNoticeTimestamp?: number;
 }>();
 
 export function getTodayDateString(): string {

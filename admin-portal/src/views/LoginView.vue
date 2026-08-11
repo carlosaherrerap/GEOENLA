@@ -2,9 +2,7 @@
   <div class="login-page">
     <div class="login-card fade-in">
       <div style="text-align: center; margin-bottom: 24px;">
-        <div style="width: 48px; height: 48px; border-radius: 12px; background: var(--primary-light); color: var(--primary); display: inline-flex; align-items: center; justify-content: center; font-size: 1.8rem; margin-bottom: 12px;">
-          <i class="ph-bold ph-globe-hemisphere-west"></i>
-        </div>
+        <img src="/iconENLA.png" alt="enlaGEO" style="width: 64px; height: 64px; border-radius: 14px; margin-bottom: 12px; object-fit: contain;" />
         <h1 style="font-family: var(--font-heading); font-size: 1.75rem; font-weight: 800; color: var(--text-heading); letter-spacing: -0.03em;">
           enla<span style="color: var(--primary);">GEO</span>
         </h1>
@@ -99,6 +97,5 @@ async function handleLogin() {
   padding: 36px;
   width: 100%;
   max-width: 420px;
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
 }
 </style>
