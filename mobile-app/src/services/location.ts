@@ -2,6 +2,7 @@ import { apiService } from './api';
 import { offlineStorage, TrackingPoint } from './storage';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
+import * as Battery from 'expo-battery';
 
 const BACKGROUND_LOCATION_TASK = 'background-location-task';
 const MIN_DISTANCE_DELTA_METERS = 3; // Mínimo 3 metros para capturar movimiento
@@ -92,6 +93,7 @@ class LocationTrackingService {
           console.log('[GPS Watchdog] GPS físico desactivado o sin permisos. Desactivando switch...');
           this.isTracking = false;
           await offlineStorage.setSwitchState(false);
+          apiService.reportGpsOffEvent('system_disabled').catch(() => {});
 
           // Guardar el error en la cola local de errores de sistema
           await offlineStorage.addSyncQueueItem({
@@ -213,6 +215,7 @@ class LocationTrackingService {
 
     this.isTracking = false;
     await offlineStorage.setSwitchState(false);
+    apiService.reportGpsOffEvent('app_switch').catch(() => {});
   }
 
   public async processLocationUpdate(locationObj: Location.LocationObject) {
@@ -220,6 +223,15 @@ class LocationTrackingService {
 
     const { latitude, longitude, accuracy, speed } = locationObj.coords;
     const now = Date.now();
+
+    // Obtener porcentaje real de batería del dispositivo
+    let realBatteryLevel = 90;
+    try {
+      const batLevel = await Battery.getBatteryLevelAsync();
+      if (batLevel !== undefined && batLevel >= 0) {
+        realBatteryLevel = Math.round(batLevel * 100);
+      }
+    } catch (_e) {}
 
     // 1. Filtro Anti-Jitter: Descartar lecturas con mala precisión
     if (accuracy && accuracy > MAX_ACCURACY_THRESHOLD_METERS) {
@@ -232,9 +244,19 @@ class LocationTrackingService {
       const distFromLast = calculateDistanceMeters(latitude, longitude, this.lastSavedPoint.lat, this.lastSavedPoint.lng);
       const speedVal = speed || 0;
       if (distFromLast < MIN_DISTANCE_DELTA_METERS && speedVal < 0.5) {
-        console.log(`[AntiJitter] Usuario en el mismo punto (${distFromLast.toFixed(1)}m). Omitiendo guardado duplicado en DB pero enviando latido de presencia.`);
-        // Transmitir latido de presencia al backend para mantener estado ACTIVO en tiempo real (last_seen_at)
-        apiService.updateDeviceInfo({ battery_level: 90 }).catch(() => {});
+        console.log(`[AntiJitter] Usuario en el mismo punto (${distFromLast.toFixed(1)}m). Transmitiendo señal viva estática a plataforma sin duplicar en DB.`);
+        const staticPoint: any = {
+          id_activity: this.currentActivityId,
+          lat: Number(latitude.toFixed(7)),
+          lng: Number(longitude.toFixed(7)),
+          accuracy: accuracy ? Number(accuracy.toFixed(1)) : 5.0,
+          speed: speed ? Number(speed.toFixed(1)) : 0.0,
+          battery_level: realBatteryLevel,
+          recorded_at: new Date(locationObj.timestamp).toISOString(),
+          is_static: true,
+        };
+        apiService.sendTrackingPoint(staticPoint).catch(() => {});
+        apiService.updateDeviceInfo({ battery_level: realBatteryLevel }).catch(() => {});
         return;
       }
     }
@@ -242,7 +264,7 @@ class LocationTrackingService {
     // 3. Control de intervalo de 2 minutos para guardar en base de datos
     if (now - this.lastDbSaveTimestamp < DB_SAVE_INTERVAL_MS && this.lastSavedPoint !== null) {
       // Transmitir latido de presencia durante el intervalo intermedio
-      apiService.updateDeviceInfo({ battery_level: 90 }).catch(() => {});
+      apiService.updateDeviceInfo({ battery_level: realBatteryLevel }).catch(() => {});
       return;
     }
 
@@ -252,7 +274,7 @@ class LocationTrackingService {
       lng: Number(longitude.toFixed(7)),
       accuracy: accuracy ? Number(accuracy.toFixed(1)) : 5.0,
       speed: speed ? Number(speed.toFixed(1)) : 0.0,
-      battery_level: 90,
+      battery_level: realBatteryLevel,
       recorded_at: new Date(locationObj.timestamp).toISOString(),
     };
 
@@ -266,7 +288,7 @@ class LocationTrackingService {
     try {
       await apiService.sendTrackingPoint(point);
       // Enviar latido de presencia para mantener el estado ACTIVO en vivo
-      apiService.updateDeviceInfo({ battery_level: point.battery_level ?? 90 }).catch(() => {});
+      apiService.updateDeviceInfo({ battery_level: point.battery_level ?? realBatteryLevel }).catch(() => {});
       console.log('[Tracking] Punto enviado en vivo a la plataforma.');
     } catch (err) {
       console.log('[Tracking] Sin conexión a internet. Guardando punto en SQLite...');

@@ -164,6 +164,9 @@ model users {
   talks          talks[]
   whatsappLogsSent     whatsapp_logs[]  @relation("AdminWspLogs")
   adminSedes     admin_sedes[]
+  loginLogs      login_logs[]
+  gpsOffEvents   gps_off_events[]
+  supervisorDailyStats supervisor_daily_stats[]
 
   @@map("usuarios")
 }
@@ -408,4 +411,46 @@ model admin_sedes {
 
   @@unique([id_user, id_location])
   @@map("admin_sedes")
+}
+
+model login_logs {
+  id           String    @id @default(uuid())
+  id_user      String?   @db.VarChar(36)
+  username     String    @db.VarChar(100)
+  exitoso      Boolean
+  motivo_fallo String?   @db.VarChar(255)
+  app_version  String?   @db.VarChar(20)
+  ip           String?   @db.VarChar(50)
+  created_at   DateTime  @default(now()) @db.Timestamp(0)
+
+  user         users?    @relation(fields: [id_user], references: [id], onDelete: SetNull)
+
+  @@map("logs_login")
+}
+
+model gps_off_events {
+  id            String    @id @default(uuid())
+  id_user       String    @db.VarChar(36)
+  origen        String    @db.VarChar(50)
+  desactivado_at DateTime  @default(now()) @db.Timestamp(0)
+
+  user          users     @relation(fields: [id_user], references: [id], onDelete: Cascade)
+
+  @@map("eventos_gps_apagado")
+}
+
+model supervisor_daily_stats {
+  id                String    @id @default(uuid())
+  id_user           String    @db.VarChar(36)
+  fecha             String    @db.VarChar(10)
+  app_version       String?   @db.VarChar(20)
+  total_mensajes_ws Int       @default(0)
+  total_llamadas_ws Int       @default(0)
+  ultimo_login_at   DateTime? @db.Timestamp(0)
+  updated_at        DateTime? @updatedAt @db.Timestamp(0)
+
+  user              users     @relation(fields: [id_user], references: [id], onDelete: Cascade)
+
+  @@unique([id_user, fecha])
+  @@map("estadisticas_diarias_supervisor")
 }

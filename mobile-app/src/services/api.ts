@@ -66,10 +66,10 @@ async function request(endpoint: string, options: RequestInit = {}, retries = 2)
 }
 
 export const apiService = {
-  async login(username: string, clave: string, deviceName = 'React Native App') {
+  async login(username: string, clave: string, deviceName = 'React Native App', app_version = '1.1') {
     const data = await request('/login', {
       method: 'POST',
-      body: JSON.stringify({ username, clave, device_name: deviceName }),
+      body: JSON.stringify({ username, clave, device_name: deviceName, app_version }),
     });
     setAuthToken(data.token);
     return data;
@@ -190,6 +190,13 @@ export const apiService = {
     return request(`/chats/${chatId}/messages`, {
       method: 'POST',
       body: JSON.stringify({ texto }),
+    });
+  },
+
+  async reportGpsOffEvent(origen: 'app_switch' | 'notification_bar' | 'system_disabled') {
+    return request('/events/gps-off', {
+      method: 'POST',
+      body: JSON.stringify({ origen }),
     });
   },
 };

@@ -182,10 +182,12 @@ app.get('/api/ping', (req, res) => res.json({ pong: true }));
 // Login
 app.post('/api/login', async (req, res) => {
   try {
-    const { username, correo, clave } = req.body;
+    const { username, correo, clave, app_version } = req.body;
     const identifier = (username || correo || '').trim();
+    const versionStr = app_version || '1.1';
+    const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '';
 
-    console.log(`[LOGIN ATTEMPT] Intento de acceso con usuario: ${identifier}`);
+    console.log(`[LOGIN ATTEMPT] Intento de acceso con usuario: ${identifier} (Versión: ${versionStr})`);
 
     const user = await prisma.users.findFirst({
       where: {
@@ -198,17 +200,68 @@ app.post('/api/login', async (req, res) => {
 
     if (!user) {
       console.log(`[LOGIN FAILED] Usuario no encontrado: ${identifier}`);
+      await prisma.login_logs.create({
+        data: {
+          username: identifier,
+          exitoso: false,
+          motivo_fallo: 'Usuario no encontrado',
+          app_version: versionStr,
+          ip: clientIp,
+        }
+      }).catch(() => {});
+
       return res.status(401).json({ message: 'Credenciales incorrectas.' });
     }
 
     if (!bcrypt.compareSync(clave, user.clave)) {
       console.log(`[LOGIN FAILED] Contraseña incorrecta para: ${identifier}`);
+      await prisma.login_logs.create({
+        data: {
+          id_user: user.id,
+          username: user.username,
+          exitoso: false,
+          motivo_fallo: 'Contraseña incorrecta',
+          app_version: versionStr,
+          ip: clientIp,
+        }
+      }).catch(() => {});
+
       return res.status(401).json({ message: 'Credenciales incorrectas.' });
     }
 
     if (user.estado !== 'activo') {
-      return res.status(403).json({ message: 'Tu cuenta está bloqueada. Contacta al administrador.' });
+      await prisma.login_logs.create({
+        data: {
+          id_user: user.id,
+          username: user.username,
+          exitoso: false,
+          motivo_fallo: 'Cuenta inactiva',
+          app_version: versionStr,
+          ip: clientIp,
+        }
+      }).catch(() => {});
+
+      return res.status(403).json({ message: 'Tu cuenta está inactiva. Contacta al administrador.' });
     }
+
+    // Registrar inicio de sesión exitoso en login_logs
+    await prisma.login_logs.create({
+      data: {
+        id_user: user.id,
+        username: user.username,
+        exitoso: true,
+        app_version: versionStr,
+        ip: clientIp,
+      }
+    }).catch(() => {});
+
+    // Actualizar estadísticas diarias del supervisor
+    const todayStr = new Date().toISOString().split('T')[0];
+    await prisma.supervisor_daily_stats.upsert({
+      where: { id_user_fecha: { id_user: user.id, fecha: todayStr } },
+      update: { app_version: versionStr, ultimo_login_at: new Date() },
+      create: { id_user: user.id, fecha: todayStr, app_version: versionStr, ultimo_login_at: new Date() },
+    }).catch(() => {});
 
     const token = jwt.sign(
       { id: user.id, username: user.username, correo: user.correo, rol: user.rol, estado: user.estado },
@@ -219,8 +272,8 @@ app.post('/api/login', async (req, res) => {
     // Actualizar o registrar device_details con last_seen_at para sesión ACTIVA al iniciar sesión
     await prisma.device_details.upsert({
       where: { id_user: user.id },
-      update: { last_seen_at: new Date() },
-      create: { id_user: user.id, last_seen_at: new Date() },
+      update: { last_seen_at: new Date(), app_version: versionStr },
+      create: { id_user: user.id, last_seen_at: new Date(), app_version: versionStr },
     }).catch(() => { });
 
     res.json({
@@ -618,7 +671,7 @@ protectedRoutes.get('/attendances', async (req: any, res) => {
 
 // Trackings
 protectedRoutes.post('/trackings', async (req: any, res) => {
-  const { id_activity, lat, lng, accuracy, speed, battery_level, recorded_at } = req.body;
+  const { id_activity, lat, lng, accuracy, speed, battery_level, recorded_at, is_static } = req.body;
   const serverNow = new Date();
 
   // Prevenir manipulación de reloj del teléfono o VPN: rechazar/sobrescribir si la hora del cliente es futura (> 1 min)
@@ -630,15 +683,19 @@ protectedRoutes.post('/trackings', async (req: any, res) => {
     }
   }
 
-  const tracking = await prisma.trackings.create({
-    data: {
-      id_user: req.user.id,
-      id_activity: id_activity || null,
-      lat, lng, accuracy, speed, battery_level,
-      recorded_at: recordedDate,
-      is_synced: true,
-    }
-  });
+  let tracking: any = null;
+  // Si el punto es estático en el mismo lugar, omitir inserción en PostgreSQL pero actualizar Redis/plataforma
+  if (!is_static) {
+    tracking = await prisma.trackings.create({
+      data: {
+        id_user: req.user.id,
+        id_activity: id_activity || null,
+        lat, lng, accuracy, speed, battery_level,
+        recorded_at: recordedDate,
+        is_synced: true,
+      }
+    });
+  }
 
   // Store hot location in Redis cache for O(1) realtime lookup
   await setLatestUserLocation(req.user.id, {
@@ -659,8 +716,9 @@ protectedRoutes.post('/trackings', async (req: any, res) => {
   }).catch(() => { });
 
   res.status(201).json({
-    message: 'Punto registrado.',
-    tracking: { ...tracking, id: tracking.id.toString() },
+    message: is_static ? 'Señal en vivo actualizada (punto estático).' : 'Punto registrado.',
+    tracking: tracking ? { ...tracking, id: tracking.id.toString() } : null,
+    static: !!is_static,
   });
 });
 
@@ -893,6 +951,71 @@ protectedRoutes.post('/device', async (req: any, res) => {
 protectedRoutes.get('/device', async (req: any, res) => {
   const device = await prisma.device_details.findUnique({ where: { id_user: req.user.id } });
   res.json(device);
+});
+
+// Evento de desactivación manual de GPS
+protectedRoutes.post('/events/gps-off', async (req: any, res) => {
+  const { origen } = req.body;
+  await prisma.gps_off_events.create({
+    data: {
+      id_user: req.user.id,
+      origen: origen || 'app_switch',
+    },
+  }).catch(() => {});
+  res.json({ message: 'Evento de desactivación de GPS registrado.' });
+});
+
+// Estadísticas de Personal para Administración
+protectedRoutes.get('/admin/staff-stats', adminMiddleware, async (req: any, res) => {
+  try {
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    let userFilter: any = { rol: 'usuario' };
+    if (req.user?.rol === 'admin') {
+      const assigned = await prisma.admin_sedes.findMany({ where: { id_user: req.user.id } });
+      const locationIds = assigned.map(a => a.id_location);
+      userFilter = {
+        rol: 'usuario',
+        supervisor: { id_location: { in: locationIds } }
+      };
+    }
+
+    const usersList = await prisma.users.findMany({
+      where: userFilter,
+      include: {
+        supervisor: { include: { location: true } },
+        deviceDetail: true,
+        loginLogs: { orderBy: { created_at: 'desc' }, take: 10 },
+        gpsOffEvents: { orderBy: { desactivado_at: 'desc' }, take: 10 },
+        supervisorDailyStats: { orderBy: { fecha: 'desc' }, take: 30 },
+      }
+    });
+
+    const stats = usersList.map(u => {
+      const daily = u.supervisorDailyStats.find(s => s.fecha === todayStr) || u.supervisorDailyStats[0];
+      const name = u.supervisor ? `${u.supervisor.nombres} ${u.supervisor.apellidos}` : u.username;
+      const appVersion = u.deviceDetail?.app_version || daily?.app_version || '1.1';
+
+      return {
+        id_user: u.id,
+        username: u.username,
+        nombre_supervisor: name,
+        sede_reg: u.supervisor?.location?.sede_reg || 'Sin Sede',
+        app_version: appVersion,
+        total_mensajes_ws: daily?.total_mensajes_ws || 0,
+        total_llamadas_ws: daily?.total_llamadas_ws || 0,
+        ultimo_login_at: daily?.ultimo_login_at || u.loginLogs[0]?.created_at || null,
+        ultimo_gps_apagado: u.gpsOffEvents[0]?.desactivado_at || null,
+        ultimos_logins: u.loginLogs,
+        eventos_gps_apagado: u.gpsOffEvents,
+      };
+    });
+
+    res.json(stats);
+  } catch (err) {
+    console.error('[GET /admin/staff-stats Error]', err);
+    res.status(500).json({ message: 'Error obteniendo estadísticas de personal.' });
+  }
 });
 
 // Chat Endpoints

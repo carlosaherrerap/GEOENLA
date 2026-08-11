@@ -132,6 +132,48 @@ export async function checkWorkerInactivityEngine() {
         return wStatus.status === 'CONNECTED';
       });
 
+      // --- ESCENARIO INICIO DE JORNADA (9:00 AM - 6:00 PM): RECORDATORIO DE CONEXIÓN POR WHATSAPP ---
+      const todayStr = new Date().toISOString().split('T')[0];
+      const nowLima = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Lima" }));
+      const currentHour = nowLima.getHours();
+      const isWorkHours = currentHour >= 9 && currentHour < 18;
+
+      if (isWorkHours) {
+        const lastSeenDateStr = u.deviceDetail?.last_seen_at ? new Date(u.deviceDetail.last_seen_at).toISOString().split('T')[0] : '';
+        const hasLoggedInToday = lastSeenDateStr === todayStr;
+
+        if (!hasLoggedInToday) {
+          const lastNotice = record.last9amNoticeTimestamp || 0;
+          if (now.getTime() - lastNotice >= 30 * 60 * 1000) {
+            record.last9amNoticeTimestamp = now.getTime();
+            const msg9am = `Hola ${userName}, te recordamos que tu jornada laboral inició a las 9:00 AM. Por favor, ingresa a la app GEOENLA e inicia tu sesión con ubicación encendida para registrar tu asistencia.`;
+
+            if (userPhone && activeAdmin) {
+              console.log(`[Inactivity Engine] Enviando recordatorio laboral (9AM) por WhatsApp a ${userName} (${userPhone})...`);
+              sendWhatsAppMessage(activeAdmin.id, userPhone, msg9am).then(async (sent) => {
+                if (sent) {
+                  await prisma.whatsapp_logs.create({
+                    data: {
+                      id_admin: activeAdmin.id,
+                      id_receiver: u.supervisor!.id,
+                      phone: userPhone,
+                      message: msg9am,
+                      sede_reg: workerSedeReg || 'No asignada',
+                    },
+                  }).catch(() => {});
+
+                  await prisma.supervisor_daily_stats.upsert({
+                    where: { id_user_fecha: { id_user: u.id, fecha: todayStr } },
+                    update: { total_mensajes_ws: { increment: 1 } },
+                    create: { id_user: u.id, fecha: todayStr, total_mensajes_ws: 1 },
+                  }).catch(() => {});
+                }
+              }).catch(() => {});
+            }
+          }
+        }
+      }
+
       // --- ESCENARIO 1: T >= 5 MINUTOS (Y < 10 MINUTOS) ---
       if (inactiveMinutes >= 5 && inactiveMinutes < 10 && !record.sent5m) {
         record.sent5m = true;
@@ -155,6 +197,12 @@ export async function checkWorkerInactivityEngine() {
                   sede_reg: workerSedeReg || 'No asignada',
                 },
               }).catch((err) => console.error('[Inactivity Engine] Error guardando log WhatsApp:', err));
+
+              await prisma.supervisor_daily_stats.upsert({
+                where: { id_user_fecha: { id_user: u.id, fecha: todayStr } },
+                update: { total_mensajes_ws: { increment: 1 } },
+                create: { id_user: u.id, fecha: todayStr, total_mensajes_ws: 1 },
+              }).catch(() => {});
             }
           } else {
             console.warn(`[Inactivity Engine] ⚠️ WhatsApp de 5m NO enviado a ${userName}. No hay administrador conectado para la región "${workerSedeReg}".`);
@@ -168,7 +216,7 @@ export async function checkWorkerInactivityEngine() {
         record.warningsCount += 1;
         console.log(`[Inactivity Engine] 10m de inactividad detectados para ${userName}. Falta ${record.warningsCount}/3`);
 
-        const msg10m = `ATENCIÓN ${userName}: El sistema GEOENLA(INEI) detecta tu ubicación deshabilitada. Te recordamos que la inactividad sin justificación constituye una falta. RECUERDA: 3 faltas significan el despido de inmediato. Por favor, activa tu ubicación (GPS) en la app GEOENLA de inmediato. (Llamada de atención ${record.warningsCount}/3)`;
+        const msg10m = `ATENCIÓN ${userName}: El sistema GEOENLA(INEI) detecta tu ubicación deshabilitada. Te recordamos que la inactividad sin justificación constituye una falta. Por favor, activa tu ubicación (GPS) en la app GEOENLA de inmediato.`;
 
         if (userPhone) {
           if (activeAdmin) {
@@ -186,20 +234,16 @@ export async function checkWorkerInactivityEngine() {
                   sede_reg: workerSedeReg || 'No asignada',
                 },
               }).catch((err) => console.error('[Inactivity Engine] Error guardando log WhatsApp:', err));
+
+              await prisma.supervisor_daily_stats.upsert({
+                where: { id_user_fecha: { id_user: u.id, fecha: todayStr } },
+                update: { total_mensajes_ws: { increment: 1 } },
+                create: { id_user: u.id, fecha: todayStr, total_mensajes_ws: 1 },
+              }).catch(() => {});
             }
           } else {
             console.warn(`[Inactivity Engine] ⚠️ WhatsApp de 10m NO enviado a ${userName}. No hay administrador conectado para la región "${workerSedeReg}".`);
           }
-        }
-
-        // Si acumula 3 llamadas de atención, inhabilitar la cuenta automáticamente
-        if (record.warningsCount >= 3) {
-          await prisma.users.update({
-            where: { id: u.id },
-            data: { estado: 'bloqueado' },
-          }).catch((err) => console.error(`[Inactivity Engine] Error bloqueando usuario ${u.id}:`, err));
-
-          console.log(`[Inactivity Engine] USUARIO BLOQUEADO automáticamente por acumular 3 faltas: ${userName}`);
         }
       }
 
@@ -216,6 +260,12 @@ export async function checkWorkerInactivityEngine() {
             audioUrl: '/audio/bicecly.mp3',
             autoHangupMs: 25000,
           });
+
+          await prisma.supervisor_daily_stats.upsert({
+            where: { id_user_fecha: { id_user: u.id, fecha: todayStr } },
+            update: { total_llamadas_ws: { increment: 1 } },
+            create: { id_user: u.id, fecha: todayStr, total_llamadas_ws: 1 },
+          }).catch(() => {});
         }
       }
     }
