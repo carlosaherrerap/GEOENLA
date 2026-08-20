@@ -383,7 +383,25 @@ protectedRoutes.get('/activities', async (req: any, res) => {
     orderBy: { created_at: 'desc' },
   });
 
-  // Garantizar la resolución del usuario si id_user apunta a supervisor.id o id_supervisor
+  const requestingUserId = (req.query.id_user as string) || (req.user?.rol === 'usuario' ? req.user.id : null);
+
+  let userAttendancesMap = new Map<string, any[]>();
+  if (requestingUserId && activities.length > 0) {
+    const actIds = activities.map(a => a.id);
+    const userAtts = await prisma.attendances.findMany({
+      where: {
+        id_user: requestingUserId,
+        id_activity: { in: actIds }
+      }
+    });
+    for (const att of userAtts) {
+      const list = userAttendancesMap.get(att.id_activity) || [];
+      list.push(att);
+      userAttendancesMap.set(att.id_activity, list);
+    }
+  }
+
+  // Garantizar la resolución del usuario e indicar estado individual por usuario
   const mappedActivities = await Promise.all(
     activities.map(async (act) => {
       let userObj = act.user;
@@ -420,8 +438,25 @@ protectedRoutes.get('/activities', async (req: any, res) => {
           }
         }
       }
+
+      let computedEstado = act.estado || 'pendiente';
+      if (requestingUserId) {
+        const atts = userAttendancesMap.get(act.id) || [];
+        if (atts.length === 0) {
+          computedEstado = 'pendiente';
+        } else if (atts.some(a => a.estado === 'completado' || a.estado === 'finalizada' || (a as any).is_final)) {
+          computedEstado = 'completado';
+        } else if (atts.length >= 2) {
+          computedEstado = 'completado';
+        } else {
+          computedEstado = 'asistencia_marcada';
+        }
+      }
+
       return {
         ...act,
+        estado: computedEstado,
+        user_estado: computedEstado,
         user: userObj
       };
     })
@@ -430,7 +465,7 @@ protectedRoutes.get('/activities', async (req: any, res) => {
   res.json({ data: mappedActivities });
 });
 
-protectedRoutes.get('/activities/:id', async (req, res) => {
+protectedRoutes.get('/activities/:id', async (req: any, res) => {
   const activity = await prisma.activities.findUnique({
     where: { id: req.params.id },
     include: {
@@ -473,7 +508,42 @@ protectedRoutes.get('/activities/:id', async (req, res) => {
     }
   }
 
-  res.json({ ...activity, user: userObj });
+  // Mapear cada usuario asignado con su estado individual de asistencia
+  const mappedActivityUsers = activity.activityUsers.map((au) => {
+    const userAtts = activity.attendances.filter(att => att.id_user === au.id_user);
+    let userStatus = 'pendiente';
+    if (userAtts.length === 1) {
+      userStatus = userAtts[0].estado === 'completado' ? 'completado' : 'asistencia_marcada';
+    } else if (userAtts.length >= 2 || userAtts.some(att => att.estado === 'completado')) {
+      userStatus = 'completado';
+    }
+    return {
+      ...au,
+      user_status: userStatus,
+      attendances_count: userAtts.length
+    };
+  });
+
+  // Calcular el estado que ve el usuario que consulta la actividad
+  let computedEstado = activity.estado || 'pendiente';
+  if (req.user?.rol === 'usuario') {
+    const myAtts = activity.attendances.filter(att => att.id_user === req.user.id);
+    if (myAtts.length === 0) {
+      computedEstado = 'pendiente';
+    } else if (myAtts.some(a => a.estado === 'completado' || a.estado === 'finalizada' || (a as any).is_final) || myAtts.length >= 2) {
+      computedEstado = 'completado';
+    } else {
+      computedEstado = 'asistencia_marcada';
+    }
+  }
+
+  res.json({
+    ...activity,
+    estado: computedEstado,
+    user_estado: computedEstado,
+    activityUsers: mappedActivityUsers,
+    user: userObj
+  });
 });
 
 // Attendances
@@ -626,13 +696,8 @@ protectedRoutes.post('/attendances/check-in', async (req: any, res) => {
       }).catch((evErr) => console.warn('[CheckIn] Error creando evidencia:', evErr));
     }
 
-    // Actualizar estado de la actividad en la base de datos
-    await prisma.activities.update({
-      where: { id: id_activity },
-      data: { estado: newStatus },
-    }).catch((actErr) => {
-      console.warn('[CheckIn] No se pudo actualizar estado de actividad:', actErr);
-    });
+    // NOTA: No actualizamos activities.estado de forma global para no alterar el estado de los demás usuarios asignados.
+    // El estado individual por usuario se calcula dinámicamente según sus registros en la tabla attendances.
 
     res.status(201).json({
       message: newStatus === 'completado' ? 'Actividad finalizada exitosamente.' : 'Asistencia registrada exitosamente.',

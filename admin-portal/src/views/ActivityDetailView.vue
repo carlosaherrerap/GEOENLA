@@ -38,12 +38,17 @@
         </div>
 
         <div class="summary-card">
-          <span class="summary-label">Personal Asignado ({{ assignedUsersList.length }})</span>
-          <div v-if="assignedUsersList.length > 0" style="margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px;">
-            <span v-for="u in assignedUsersList" :key="u?.id" class="badge badge-info" style="font-size: 0.8rem;">
-              {{ getUserDisplayName(u) }}
-            </span>
-          </div>
+          <span class="summary-label">Personal Asignado</span>
+          <span class="summary-value" style="margin-bottom: 6px;">{{ assignedUsersWithStatus.length }} Supervisores</span>
+          <button
+            v-if="assignedUsersWithStatus.length > 0"
+            type="button"
+            class="btn btn-sm btn-secondary"
+            style="align-self: flex-start; margin-top: 4px; display: inline-flex; align-items: center; gap: 6px;"
+            @click="showModal = true"
+          >
+            <i class="ph ph-users"></i> Ver Personal Asignado ({{ assignedUsersWithStatus.length }})
+          </button>
           <span v-else class="summary-value" style="font-size: 0.85rem; color: var(--text-muted);">Sin asignar</span>
         </div>
 
@@ -102,6 +107,66 @@
         </div>
       </div>
     </template>
+
+    <!-- Modal Personal Asignado con Buscador -->
+    <div v-if="showModal" class="modal-backdrop" @click.self="showModal = false">
+      <div class="modal-container">
+        <div class="modal-header">
+          <div>
+            <h3 class="modal-title">Personal Asignado ({{ assignedUsersWithStatus.length }})</h3>
+            <p class="modal-subtitle">Consulta y busca entre los supervisores asignados a esta actividad</p>
+          </div>
+          <button type="button" class="btn-close" @click="showModal = false">
+            <i class="ph ph-x"></i>
+          </button>
+        </div>
+
+        <div class="modal-body">
+          <!-- Buscador -->
+          <div class="search-box" style="margin-bottom: 16px; position: relative;">
+            <i class="ph ph-magnifying-glass" style="position: absolute; left: 12px; top: 12px; font-size: 1.1rem; color: var(--text-muted);"></i>
+            <input
+              v-model="searchQuery"
+              type="text"
+              class="form-input"
+              style="padding-left: 38px; width: 100%;"
+              placeholder="Buscar por nombre, DNI o usuario..."
+            />
+          </div>
+
+          <!-- Lista de Usuarios -->
+          <div v-if="filteredAssignedUsers.length === 0" style="padding: 24px; text-align: center; color: var(--text-muted);">
+            No se encontraron usuarios coincidentes con "{{ searchQuery }}".
+          </div>
+
+          <div v-else class="assigned-users-list">
+            <div v-for="u in filteredAssignedUsers" :key="u.id" class="user-item-row">
+              <div class="user-avatar">
+                {{ (u.nombres?.[0] || u.username?.[0] || 'U').toUpperCase() }}
+              </div>
+              <div class="user-info">
+                <div class="user-name">
+                  {{ u.nombres ? `${u.nombres} ${u.ape_pat} ${u.ape_mat}`.trim() : `@${u.username}` }}
+                </div>
+                <div class="user-meta">
+                  <span>@{{ u.username }}</span>
+                  <span v-if="u.doc">• DNI: {{ u.doc }}</span>
+                </div>
+              </div>
+              <div class="user-status-badge">
+                <span :class="['badge', userStatusBadgeClass(u.status)]">
+                  {{ formatUserStatusLabel(u.status) }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" @click="showModal = false">Cerrar</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -113,24 +178,71 @@ const props = defineProps({ id: String })
 
 const activity = ref(null)
 const loading = ref(true)
+const showModal = ref(false)
+const searchQuery = ref('')
 
-const assignedUsersList = computed(() => {
+const assignedUsersWithStatus = computed(() => {
   if (!activity.value) return []
+  let usersList = []
   if (activity.value.activityUsers && activity.value.activityUsers.length > 0) {
-    return activity.value.activityUsers.map(au => au.user).filter(Boolean)
+    usersList = activity.value.activityUsers.map(au => {
+      const u = au.user || {}
+      return {
+        id: u.id || au.id_user,
+        username: u.username || '',
+        nombres: u.supervisor?.nombres || '',
+        ape_pat: u.supervisor?.ape_pat || '',
+        ape_mat: u.supervisor?.ape_mat || '',
+        doc: u.supervisor?.doc || '',
+        status: au.user_status || 'pendiente',
+        attendances_count: au.attendances_count || 0
+      }
+    })
+  } else if (activity.value.user) {
+    const u = activity.value.user
+    usersList = [{
+      id: u.id,
+      username: u.username || '',
+      nombres: u.supervisor?.nombres || '',
+      ape_pat: u.supervisor?.ape_pat || '',
+      ape_mat: u.supervisor?.ape_mat || '',
+      doc: u.supervisor?.doc || '',
+      status: activity.value.estado || 'pendiente',
+      attendances_count: activity.value.attendances?.length || 0
+    }]
   }
-  if (activity.value.user) {
-    return [activity.value.user]
-  }
-  return []
+  return usersList
 })
 
-function getUserDisplayName(u) {
-  if (!u) return '-'
-  if (u.supervisor && (u.supervisor.nombres || u.supervisor.ape_pat)) {
-    return `${u.supervisor.nombres || ''} ${u.supervisor.ape_pat || ''}`.trim()
+const filteredAssignedUsers = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase()
+  if (!q) return assignedUsersWithStatus.value
+  return assignedUsersWithStatus.value.filter(u => {
+    const fullName = `${u.nombres} ${u.ape_pat} ${u.ape_mat}`.toLowerCase()
+    const username = (u.username || '').toLowerCase()
+    const doc = (u.doc || '').toLowerCase()
+    return fullName.includes(q) || username.includes(q) || doc.includes(q)
+  })
+})
+
+function userStatusBadgeClass(status) {
+  const map = {
+    pendiente: 'badge-warning',
+    asistencia_marcada: 'badge-info',
+    completado: 'badge-success',
+    cancelado: 'badge-danger'
   }
-  return u.username ? `@${u.username}` : '-'
+  return map[status] || 'badge-warning'
+}
+
+function formatUserStatusLabel(status) {
+  const map = {
+    pendiente: 'PENDIENTE',
+    asistencia_marcada: 'ASISTENCIA MARCADA',
+    completado: 'FINALIZADA',
+    cancelado: 'CANCELADA'
+  }
+  return map[status] || status.toUpperCase()
 }
 
 function statusClass(estado) {
@@ -250,5 +362,125 @@ onMounted(() => fetchActivity())
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
   padding: 12px 14px;
+}
+
+/* Modal Styling */
+.modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(15, 23, 42, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 20px;
+}
+
+.modal-container {
+  background: var(--bg-surface, #ffffff);
+  border-radius: var(--radius-lg, 12px);
+  width: 100%;
+  max-width: 580px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-medium, #cbd5e1);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+.modal-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border-subtle, #e2e8f0);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.modal-title {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--text-heading, #0f172a);
+  margin: 0;
+}
+
+.modal-subtitle {
+  font-size: 0.8rem;
+  color: var(--text-muted, #64748b);
+  margin: 2px 0 0 0;
+}
+
+.btn-close {
+  background: transparent;
+  border: none;
+  font-size: 1.3rem;
+  color: var(--text-muted, #64748b);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+}
+.btn-close:hover {
+  background: var(--bg-subtle, #f1f5f9);
+  color: var(--text-heading, #0f172a);
+}
+
+.modal-body {
+  padding: 20px 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.modal-footer {
+  padding: 14px 24px;
+  border-top: 1px solid var(--border-subtle, #e2e8f0);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.assigned-users-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.user-item-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--bg-subtle, #f8fafc);
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  border-radius: 8px;
+}
+
+.user-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: #0F5698;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.user-info {
+  flex: 1;
+}
+
+.user-name {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-heading, #0f172a);
+}
+
+.user-meta {
+  font-size: 0.78rem;
+  color: var(--text-muted, #64748b);
+  margin-top: 2px;
 }
 </style>
