@@ -218,6 +218,36 @@ class OfflineStorageService {
       console.error('[OfflineStorage] Error limpiando historial GPS:', err);
     }
   }
+
+  public hasUnsyncedItemsOlderThan(minutes: number): { hasOldItems: boolean; count: number; oldestMinutes: number } {
+    const thresholdMs = minutes * 60 * 1000;
+    const now = Date.now();
+    let oldestTimestamp = now;
+    let count = 0;
+
+    for (const item of this.syncQueue) {
+      const ts = new Date(item.recorded_at).getTime();
+      if (!isNaN(ts) && now - ts > thresholdMs) {
+        count++;
+        if (ts < oldestTimestamp) oldestTimestamp = ts;
+      }
+    }
+
+    for (const point of this.trackingQueue) {
+      const ts = new Date(point.recorded_at).getTime();
+      if (!isNaN(ts) && now - ts > thresholdMs) {
+        count++;
+        if (ts < oldestTimestamp) oldestTimestamp = ts;
+      }
+    }
+
+    const oldestMinutes = Math.floor((now - oldestTimestamp) / (60 * 1000));
+    return {
+      hasOldItems: count > 0,
+      count,
+      oldestMinutes: count > 0 ? oldestMinutes : 0,
+    };
+  }
 }
 
 export const offlineStorage = new OfflineStorageService();

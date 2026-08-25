@@ -14,6 +14,8 @@ import { prisma } from './prismaClient';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import path from 'path';
+import archiver from 'archiver';
+import ExcelJS from 'exceljs';
 
 // Fix global BigInt JSON serialization in Express
 (BigInt.prototype as any).toJSON = function () {
@@ -351,6 +353,13 @@ protectedRoutes.get('/activities', async (req: any, res) => {
     ];
   }
 
+  const page = req.query.page ? Number(req.query.page) : null;
+  const limit = req.query.limit ? Number(req.query.limit) : 10;
+  let totalCount = 0;
+  if (page) {
+    totalCount = await prisma.activities.count({ where });
+  }
+
   const activities = await prisma.activities.findMany({
     where,
     include: {
@@ -381,6 +390,7 @@ protectedRoutes.get('/activities', async (req: any, res) => {
       }
     },
     orderBy: { created_at: 'desc' },
+    ...(page ? { skip: (page - 1) * limit, take: limit } : {}),
   });
 
   const requestingUserId = (req.query.id_user as string) || (req.user?.rol === 'usuario' ? req.user.id : null);
@@ -462,7 +472,17 @@ protectedRoutes.get('/activities', async (req: any, res) => {
     })
   );
 
-  res.json({ data: mappedActivities });
+  if (page) {
+    res.json({
+      data: mappedActivities,
+      total: totalCount,
+      page,
+      limit,
+      totalPages: Math.ceil(totalCount / limit),
+    });
+  } else {
+    res.json({ data: mappedActivities });
+  }
 });
 
 protectedRoutes.get('/activities/:id', async (req: any, res) => {
@@ -2002,6 +2022,244 @@ adminRoutes.post('/periods', async (req: any, res: any) => {
   } catch (err: any) {
     console.error('[CreatePeriod ERROR]', err);
     res.status(500).json({ message: err.message || 'Error al crear el período.' });
+  }
+});
+
+// Endpoint para descargar todas las fotos en ZIP estructurado y Excel resumen
+adminRoutes.get('/reports/evidences-zip', async (req: any, res: any) => {
+  try {
+    const { fec_inicio, fec_fin, id_activity, id_period, id_user } = req.query;
+    const where: any = {};
+
+    if (id_activity) where.id = id_activity;
+    if (id_period) where.id_period = id_period;
+    if (id_user) {
+      where.OR = [
+        { id_user: id_user as string },
+        { activityUsers: { some: { id_user: id_user as string } } }
+      ];
+    }
+
+    if (fec_inicio || fec_fin) {
+      where.created_at = {};
+      if (fec_inicio) {
+        where.created_at.gte = new Date(String(fec_inicio));
+      }
+      if (fec_fin) {
+        const endDate = new Date(String(fec_fin));
+        endDate.setDate(endDate.getDate() + 1);
+        where.created_at.lt = endDate;
+      }
+    }
+
+    const activities = await prisma.activities.findMany({
+      where,
+      include: {
+        period: true,
+        location: { include: { ubiety: true } },
+        user: { include: { supervisor: true } },
+        activityUsers: { include: { user: { include: { supervisor: true } } } },
+        attendances: {
+          include: {
+            user: { include: { supervisor: true } },
+            location: true,
+          },
+          orderBy: { checked_in_at: 'asc' }
+        },
+        evidence: true,
+      },
+      orderBy: { created_at: 'desc' },
+    });
+
+    // Crear archivo ZIP
+    const archive = archiver('zip', { zlib: { level: 6 } });
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="Evidencias_${new Date().toISOString().split('T')[0]}.zip"`);
+
+    archive.pipe(res);
+
+    // Preparar libro de Excel
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'GeoApp Sistema';
+    workbook.created = new Date();
+
+    const worksheet = workbook.addWorksheet('Resumen de Evidencias');
+
+    worksheet.columns = [
+      { header: 'N°', key: 'index', width: 6 },
+      { header: 'Actividad', key: 'actividad', width: 30 },
+      { header: 'Sede / Ubicación', key: 'sede', width: 25 },
+      { header: 'Región Sede', key: 'sede_reg', width: 18 },
+      { header: 'Fecha Desarrollo', key: 'fecha_desarrollo', width: 18 },
+      { header: 'Supervisor / Responsable', key: 'supervisor', width: 28 },
+      { header: 'Documento (DNI)', key: 'doc', width: 16 },
+      { header: 'Correo', key: 'correo', width: 25 },
+      { header: 'Estado', key: 'estado', width: 16 },
+      { header: 'Cant. Fotos', key: 'cant_fotos', width: 14 },
+      { header: 'Fecha Marcación', key: 'fec_marcacion', width: 20 },
+      { header: 'Observación', key: 'observacion', width: 35 },
+    ];
+
+    // Estilo de encabezado
+    worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    worksheet.getRow(1).fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF171A20' }
+    };
+    worksheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
+
+    let rowIndex = 1;
+    let totalFotosSum = 0;
+
+    const sanitize = (str: string) => {
+      return (str || 'Sin_Nombre')
+        .replace(/[\/\\:*?"<>|]/g, '_')
+        .trim();
+    };
+
+    const formatDateShort = (dateObj?: Date | string | null) => {
+      if (!dateObj) return '00-00-00';
+      const d = new Date(dateObj);
+      if (isNaN(d.getTime())) return '00-00-00';
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = String(d.getFullYear()).slice(-2);
+      return `${day}-${month}-${year}`;
+    };
+
+    const formatDateFull = (dateObj?: Date | string | null) => {
+      if (!dateObj) return '-';
+      const d = new Date(dateObj);
+      if (isNaN(d.getTime())) return '-';
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      return `${day}/${month}/${year}`;
+    };
+
+    for (const act of activities) {
+      const actDateStr = formatDateShort(act.period?.fec_inicio || act.created_at);
+      const actFolderName = `#${sanitize(act.actividad)}_${actDateStr}`;
+
+      const attendances = act.attendances || [];
+
+      if (attendances.length > 0) {
+        for (const att of attendances) {
+          const supervisorObj = att.user?.supervisor;
+          const supervisorName = supervisorObj
+            ? `${supervisorObj.nombres} ${supervisorObj.ape_pat || ''}`.trim()
+            : att.user?.username || 'Supervisor';
+
+          const supervisorFolderName = sanitize(supervisorName);
+
+          // Extraer fotos
+          let photoList: string[] = [];
+          if (Array.isArray(att.photos)) {
+            photoList = att.photos.filter((p: any) => typeof p === 'string' && p.length > 0);
+          } else if (typeof att.photos === 'string') {
+            try {
+              const parsed = JSON.parse(att.photos);
+              if (Array.isArray(parsed)) photoList = parsed;
+              else photoList = [att.photos];
+            } catch {
+              photoList = [att.photos];
+            }
+          }
+
+          totalFotosSum += photoList.length;
+
+          worksheet.addRow({
+            index: rowIndex++,
+            actividad: act.actividad,
+            sede: act.location?.nombre || att.location?.nombre || 'Sede Central',
+            sede_reg: act.location?.sede_reg || 'Lima',
+            fecha_desarrollo: formatDateFull(act.period?.fec_inicio || act.created_at),
+            supervisor: supervisorName,
+            doc: supervisorObj?.doc || '-',
+            correo: att.user?.correo || '-',
+            estado: att.estado || act.estado || 'completado',
+            cant_fotos: photoList.length,
+            fec_marcacion: att.checked_in_at ? new Date(att.checked_in_at).toLocaleString('es-PE') : '-',
+            observacion: att.observacion || '-',
+          });
+
+          // Descargar y empaquetar fotos en la carpeta correspondente
+          for (let pIdx = 0; pIdx < photoList.length; pIdx++) {
+            const photoItem = photoList[pIdx];
+            const ext = photoItem.includes('.png') ? 'png' : 'jpg';
+            const fileName = `foto_${pIdx + 1}.${ext}`;
+            const zipPath = `${actFolderName}/${supervisorFolderName}/${fileName}`;
+
+            try {
+              if (photoItem.startsWith('http://') || photoItem.startsWith('https://')) {
+                const response = await fetch(photoItem);
+                if (response.ok) {
+                  const arrayBuffer = await response.arrayBuffer();
+                  archive.append(Buffer.from(arrayBuffer), { name: zipPath });
+                }
+              } else if (photoItem.startsWith('data:image/')) {
+                const base64Data = photoItem.replace(/^data:image\/\w+;base64,/, '');
+                archive.append(Buffer.from(base64Data, 'base64'), { name: zipPath });
+              }
+            } catch (pErr) {
+              console.warn(`[ZIP Report] Error al descargar foto ${photoItem}:`, pErr);
+            }
+          }
+        }
+      } else {
+        // Actividad sin asistencias aún
+        const defaultUser = act.user;
+        const defaultSupervisor = defaultUser?.supervisor;
+        const supervisorName = defaultSupervisor
+          ? `${defaultSupervisor.nombres} ${defaultSupervisor.ape_pat || ''}`.trim()
+          : defaultUser?.username || 'Sin supervisor';
+
+        worksheet.addRow({
+          index: rowIndex++,
+          actividad: act.actividad,
+          sede: act.location?.nombre || 'Sede Central',
+          sede_reg: act.location?.sede_reg || 'Lima',
+          fecha_desarrollo: formatDateFull(act.period?.fec_inicio || act.created_at),
+          supervisor: supervisorName,
+          doc: defaultSupervisor?.doc || '-',
+          correo: defaultUser?.correo || '-',
+          estado: act.estado || 'pendiente',
+          cant_fotos: 0,
+          fec_marcacion: '-',
+          observacion: act.detalle || '-',
+        });
+      }
+    }
+
+    // Fila de totales en Excel
+    const summaryRow = worksheet.addRow({
+      index: '',
+      actividad: 'TOTAL GENERAL',
+      sede: '',
+      sede_reg: '',
+      fecha_desarrollo: '',
+      supervisor: '',
+      doc: '',
+      correo: '',
+      estado: '',
+      cant_fotos: totalFotosSum,
+      fec_marcacion: '',
+      observacion: `${activities.length} actividades procesadas`,
+    });
+    summaryRow.font = { bold: true };
+
+    // Generar buffer de Excel y adjuntar en el ZIP
+    const excelBuffer = await workbook.xlsx.writeBuffer();
+    archive.append(Buffer.from(excelBuffer), { name: 'Resumen_Evidencias_Actividades.xlsx' });
+
+    await archive.finalize();
+  } catch (err: any) {
+    console.error('[EvidencesZip ERROR]', err);
+    if (!res.headersSent) {
+      res.status(500).json({ message: err.message || 'Error al generar el archivo ZIP de evidencias.' });
+    }
   }
 });
 

@@ -205,6 +205,40 @@ export const ActivitiesScreen: React.FC<Props> = ({
     locationTracking.registerStatusChangeListener((active) => {
       setIsTransmitting(active);
     });
+
+    // Monitoreo de inactividad de puntos (1 hora) y retraso de sincronización (30 min)
+    let lastInactivityAlertTime = 0;
+    let lastSyncAlertTime = 0;
+
+    const monitoringInterval = setInterval(() => {
+      const now = Date.now();
+
+      // 1. Alerta si lleva más de 1 hora sin registrar puntos estando en transmisión
+      if (locationTracking.isTrackingActive()) {
+        const lastPointTs = locationTracking.getLastPointRecordedTimestamp();
+        if (now - lastPointTs > 60 * 60 * 1000 && now - lastInactivityAlertTime > 30 * 60 * 1000) {
+          lastInactivityAlertTime = now;
+          Alert.alert(
+            'Aviso de Transmisión de Ubicación',
+            'No se han detectado nuevos puntos de ubicación generados en la última hora. Por favor, apaga y vuelve a encender el botón de TRANSMISIÓN DE UBICACIÓN para restablecer la conexión del GPS.'
+          );
+        }
+      }
+
+      // 2. Alerta si hay puntos en cola local con más de 30 minutos sin sincronizar
+      const syncStatus = offlineStorage.hasUnsyncedItemsOlderThan(30);
+      if (syncStatus.hasOldItems && now - lastSyncAlertTime > 30 * 60 * 1000) {
+        lastSyncAlertTime = now;
+        Alert.alert(
+          'Registros Pendientes de Sincronización',
+          `Tienes ${syncStatus.count} registros guardados localmente desde hace más de 30 minutos sin sincronizar. Por favor, verifica tu conexión a internet o sincroniza tus datos.`
+        );
+      }
+    }, 5 * 60 * 1000);
+
+    return () => {
+      clearInterval(monitoringInterval);
+    };
   }, []);
 
   const handleToggleSwitch = async (value: boolean) => {

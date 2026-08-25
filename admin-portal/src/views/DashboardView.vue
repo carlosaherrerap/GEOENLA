@@ -23,6 +23,9 @@
         <router-link to="/connectivity" class="nav-item">
           <i class="ph ph-whatsapp-logo" style="font-size: 1.2rem; color: #25D366;"></i> <span>Conectividad</span>
         </router-link>
+        <router-link to="/evidences" class="nav-item">
+          <i class="ph ph-folder-notch-open" style="font-size: 1.2rem;"></i> <span>Evidencias</span>
+        </router-link>
       </nav>
       <div style="padding: 16px; border-top: 1px solid rgba(255, 255, 255, 0.15); background-color: transparent; color: #ffffff;">
         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">

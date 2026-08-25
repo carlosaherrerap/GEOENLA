@@ -104,7 +104,7 @@
     <div class="filters-bar">
       <div class="form-group" style="margin: 0; flex: 1;">
         <label class="form-label">Estado de Actividad</label>
-        <select v-model="filterEstado" class="form-select" @change="fetchActivities">
+        <select v-model="filterEstado" class="form-select" @change="onFilterChange">
           <option value="">Todos los Estados</option>
           <option value="pendiente">Pendiente</option>
           <option value="en_progreso">En Progreso</option>
@@ -113,8 +113,11 @@
         </select>
       </div>
       <div class="form-group" style="margin: 0; flex: 1;">
-        <label class="form-label">Filtrar por Fecha</label>
-        <input v-model="filterFecha" type="date" class="form-input" @change="fetchActivities" />
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <label class="form-label">Filtrar por Fecha</label>
+          <button v-if="filterFecha" type="button" class="btn-link" @click="clearDateFilter">Ver Todas las Fechas</button>
+        </div>
+        <input v-model="filterFecha" type="date" class="form-input" @change="onFilterChange" />
       </div>
     </div>
 
@@ -176,11 +179,46 @@
           </tr>
           <tr v-if="activities.length === 0">
             <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 40px;">
-              No hay actividades registradas.
+              No hay actividades registradas para esta selección.
             </td>
           </tr>
         </tbody>
       </table>
+
+      <!-- PAGINATION CONTROLS (10 por página) -->
+      <div v-if="totalActivities > 0" style="display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-top: 1px solid var(--border-subtle); background: var(--bg-subtle);">
+        <div style="font-size: 0.85rem; color: var(--text-muted);">
+          Mostrando página <strong>{{ currentPage }}</strong> de <strong>{{ totalPages }}</strong> ({{ totalActivities }} actividades en total)
+        </div>
+        <div style="display: flex; gap: 6px; align-items: center;">
+          <button
+            class="btn btn-sm btn-ghost"
+            :disabled="currentPage <= 1"
+            @click="goToPage(currentPage - 1)"
+          >
+            &laquo; Anterior
+          </button>
+
+          <button
+            v-for="p in visiblePages"
+            :key="p"
+            class="btn btn-sm"
+            :class="p === currentPage ? 'btn-primary' : 'btn-ghost'"
+            @click="goToPage(p)"
+            style="min-width: 32px;"
+          >
+            {{ p }}
+          </button>
+
+          <button
+            class="btn btn-sm btn-ghost"
+            :disabled="currentPage >= totalPages"
+            @click="goToPage(currentPage + 1)"
+          >
+            Siguiente &raquo;
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- MODAL: CREAR SEDE (LOCATION + UBIETY) -->
@@ -447,7 +485,54 @@ const loading = ref(true)
 const showCreate = ref(false)
 const creating = ref(false)
 const filterEstado = ref('')
-const filterFecha = ref('')
+
+// Fecha de hoy local por defecto (YYYY-MM-DD)
+function getTodayDateStr() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const filterFecha = ref(getTodayDateStr())
+
+// Paginación
+const currentPage = ref(1)
+const totalPages = ref(1)
+const totalActivities = ref(0)
+const pageSize = ref(10)
+
+const visiblePages = computed(() => {
+  const pages = []
+  const maxButtons = 5
+  let start = Math.max(1, currentPage.value - Math.floor(maxButtons / 2))
+  let end = Math.min(totalPages.value, start + maxButtons - 1)
+  if (end - start < maxButtons - 1) {
+    start = Math.max(1, end - maxButtons + 1)
+  }
+  for (let i = start; i <= end; i++) {
+    pages.push(i)
+  }
+  return pages
+})
+
+function onFilterChange() {
+  currentPage.value = 1
+  fetchActivities()
+}
+
+function clearDateFilter() {
+  filterFecha.value = ''
+  currentPage.value = 1
+  fetchActivities()
+}
+
+function goToPage(p) {
+  if (p < 1 || p > totalPages.value) return
+  currentPage.value = p
+  fetchActivities()
+}
 
 const showLocationModal = ref(false)
 const showCoordsModal = ref(false)
@@ -511,12 +596,18 @@ function formatDate(isoStr) {
 async function fetchActivities() {
   loading.value = true
   try {
-    const params = {}
+    const params = {
+      page: currentPage.value,
+      limit: pageSize.value,
+    }
     if (filterEstado.value) params.estado = filterEstado.value
     if (filterFecha.value) params.fecha = filterFecha.value
 
     const { data } = await api.get('/activities', { params })
     activities.value = data.data || []
+    totalActivities.value = data.total !== undefined ? data.total : activities.value.length
+    totalPages.value = data.totalPages || Math.ceil(totalActivities.value / pageSize.value) || 1
+    currentPage.value = data.page || currentPage.value
   } catch (err) {
     console.error('Error fetching activities:', err)
   } finally {

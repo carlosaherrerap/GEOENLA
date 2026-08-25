@@ -45,14 +45,22 @@ class LocationTrackingService {
   private foregroundSubscription: any = null;
   private lastSavedPoint: { lat: number; lng: number; timestamp: number } | null = null;
   private lastDbSaveTimestamp: number = 0;
+  private lastPointRecordedTimestamp: number = Date.now();
 
   private watchdogTimer: any = null;
+  private hourlyGpsCycleTimer: any = null;
+  private isCyclicRefreshing = false;
   private isGpsWarningAlertActive = false;
   private onStatusChange: ((active: boolean) => void) | null = null;
 
   constructor() {
     // Iniciar el watchdog inmediatamente para sincronizar el GPS físico y el switch en tiempo real
     this.startGpsWatchdog();
+    this.startHourlyGpsCycle();
+  }
+
+  public getLastPointRecordedTimestamp(): number {
+    return this.lastPointRecordedTimestamp;
   }
 
   public registerStatusChangeListener(fn: (active: boolean) => void) {
@@ -73,6 +81,73 @@ class LocationTrackingService {
 
   public isTrackingActive(): boolean {
     return this.isTracking;
+  }
+
+  private startHourlyGpsCycle() {
+    if (this.hourlyGpsCycleTimer) return;
+    // Ejecutar ciclo horario cada 1 hora (3600000 ms)
+    this.hourlyGpsCycleTimer = setInterval(async () => {
+      if (this.isTracking && !this.isCyclicRefreshing) {
+        await this.performGpsCyclicRefresh();
+      }
+    }, 60 * 60 * 1000);
+  }
+
+  public async performGpsCyclicRefresh() {
+    if (!this.isTracking || this.isCyclicRefreshing) return;
+    this.isCyclicRefreshing = true;
+    console.log('[GPS Cyclic Refresh] Pausando GPS por 15 segundos para forzar reconexión limpia y recalibrar satélites...');
+
+    try {
+      if (this.foregroundSubscription) {
+        this.foregroundSubscription.remove();
+        this.foregroundSubscription = null;
+      }
+      try {
+        const hasBg = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
+        if (hasBg) {
+          await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
+        }
+      } catch (_bgErr) {}
+
+      // Esperar 15 segundos con el GPS apagado/pausado
+      await new Promise<void>(resolve => { setTimeout(() => resolve(), 15000); });
+
+      // Si el usuario aún mantiene activo el rastreo, volver a encenderlo
+      if (this.isTracking) {
+        console.log('[GPS Cyclic Refresh] Reanudando GPS con nueva adquisición satelital...');
+        this.foregroundSubscription = await Location.watchPositionAsync(
+          {
+            accuracy: Location.Accuracy.High,
+            timeInterval: 5000,
+            distanceInterval: 3,
+          },
+          (loc) => {
+            this.processLocationUpdate(loc);
+          }
+        );
+
+        const { status: backgroundStatus } = await Location.getBackgroundPermissionsAsync();
+        if (backgroundStatus === 'granted') {
+          await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
+            accuracy: Location.Accuracy.High,
+            timeInterval: 10000,
+            distanceInterval: 3,
+            showsBackgroundLocationIndicator: true,
+            pausesUpdatesAutomatically: false,
+            foregroundService: {
+              notificationTitle: 'GeoApp ENLA - GPS Activo',
+              notificationBody: 'Transmitiendo ubicación autorizada en segundo plano',
+              notificationColor: '#024ad8',
+            },
+          });
+        }
+      }
+    } catch (cycleErr) {
+      console.warn('[GPS Cyclic Refresh Error]', cycleErr);
+    } finally {
+      this.isCyclicRefreshing = false;
+    }
   }
 
   private startGpsWatchdog() {
@@ -280,6 +355,7 @@ class LocationTrackingService {
 
     this.lastSavedPoint = { lat: point.lat, lng: point.lng, timestamp: now };
     this.lastDbSaveTimestamp = now;
+    this.lastPointRecordedTimestamp = now;
 
     // 4. Procesar primero los puntos offline pendientes de SQLite/AsyncStorage (orden cronológico)
     await this.flushOfflinePoints();
