@@ -1,15 +1,33 @@
 import ExcelJS from 'exceljs';
 import path from 'path';
+import fs from 'fs';
 import { prisma } from '../prismaClient';
 
 export async function updateDatabaseFromExcel(): Promise<{ updated: number; skipped: number; errors: number }> {
-  console.log('[ExcelUpdater] Iniciando sincronizacion de sedes, supervisores y usuarios desde update.xlsx...');
-  const filePath = path.join(__dirname, '../src/update.xlsx');
+  const candidatePaths = [
+    path.join(__dirname, '../src/update.xlsx'),
+    path.join(__dirname, '../update.xlsx'),
+    path.join(process.cwd(), 'src/update.xlsx'),
+    path.join(process.cwd(), 'update.xlsx'),
+  ];
 
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.readFile(filePath);
+  const filePath = candidatePaths.find(p => fs.existsSync(p));
 
-  const worksheet = workbook.worksheets[0];
+  if (!filePath) {
+    console.log('[ExcelUpdater] Archivo update.xlsx no encontrado en el entorno. Omitiendo sincronización inicial.');
+    return { updated: 0, skipped: 0, errors: 0 };
+  }
+
+  console.log(`[ExcelUpdater] Iniciando sincronización desde ${filePath}...`);
+  try {
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.readFile(filePath);
+
+    const worksheet = workbook.worksheets[0];
+    if (!worksheet) {
+      console.log('[ExcelUpdater] No se encontraron hojas en update.xlsx. Omitiendo.');
+      return { updated: 0, skipped: 0, errors: 0 };
+    }
   let updatedCount = 0;
   let skippedCount = 0;
   let errorCount = 0;
@@ -125,6 +143,10 @@ export async function updateDatabaseFromExcel(): Promise<{ updated: number; skip
     }
   }
 
-  console.log(`[ExcelUpdater] Finalizado. Actualizados: ${updatedCount}, Omitidos: ${skippedCount}, Errores: ${errorCount}`);
-  return { updated: updatedCount, skipped: skippedCount, errors: errorCount };
+    console.log(`[ExcelUpdater] Finalizado. Actualizados: ${updatedCount}, Omitidos: ${skippedCount}, Errores: ${errorCount}`);
+    return { updated: updatedCount, skipped: skippedCount, errors: errorCount };
+  } catch (err: any) {
+    console.error('[ExcelUpdater] Error al procesar update.xlsx:', err.message);
+    return { updated: updatedCount, skipped: skippedCount, errors: errorCount };
+  }
 }
