@@ -313,45 +313,73 @@ protectedRoutes.post('/logout', async (req: any, res) => {
 
 // Activities
 protectedRoutes.get('/activities', async (req: any, res) => {
-  const { fecha, estado, id_period, id_user } = req.query;
-  const where: any = {};
+  const { fecha, fec_inicio, fec_fin, estado, id_period, id_user } = req.query;
+  const andConditions: any[] = [];
 
+  const targetUserId = req.query.id_user || (req.user.rol === 'usuario' ? req.user.id : null);
   if (req.user.rol === 'usuario') {
     const routes = await prisma.routes.findMany({ where: { id_user: req.user.id }, select: { id_sede: true } });
     const locationIds = routes.map(r => r.id_sede);
 
-    // Buscar también si req.user.id_supervisor existe
     const userDb = await prisma.users.findUnique({ where: { id: req.user.id }, select: { id_supervisor: true } });
     const userSuperId = userDb?.id_supervisor;
 
-    const userOrConditions: any[] = [{ id_user: req.user.id }];
+    const userOrConditions: any[] = [{ id_user: req.user.id }, { activityUsers: { some: { id_user: req.user.id } } }];
     if (userSuperId) {
       userOrConditions.push({ id_user: userSuperId });
+      userOrConditions.push({ activityUsers: { some: { id_user: userSuperId } } });
     }
     if (locationIds.length > 0) {
       userOrConditions.push({ id_location: { in: locationIds } });
     }
-
-    where.OR = userOrConditions;
-  } else if (id_user) {
-    where.id_user = id_user as string;
+    andConditions.push({ OR: userOrConditions });
+  } else if (targetUserId) {
+    andConditions.push({
+      OR: [
+        { id_user: targetUserId as string },
+        { activityUsers: { some: { id_user: targetUserId as string } } }
+      ]
+    });
   }
 
-  if (fecha) {
-    const start = new Date(fecha as string);
-    const end = new Date(start); end.setDate(end.getDate() + 1);
-    where.created_at = { gte: start, lt: end };
-  }
-  if (estado) where.estado = estado;
-  if (id_period) where.id_period = id_period;
+  if (estado) andConditions.push({ estado });
+  if (id_period) andConditions.push({ id_period });
 
-  const targetUserId = req.query.id_user || (req.user.rol === 'usuario' ? req.user.id : null);
-  if (targetUserId) {
-    where.OR = [
-      { id_user: targetUserId },
-      { activityUsers: { some: { id_user: targetUserId } } }
-    ];
+  const startParam = fec_inicio || fecha;
+  const endParam = fec_fin || fecha;
+
+  if (startParam || endParam) {
+    const startDate = startParam ? new Date(`${startParam}T00:00:00`) : null;
+    const endDate = endParam ? new Date(`${endParam}T23:59:59.999`) : null;
+
+    const dateOrs: any[] = [];
+    if (startDate && endDate) {
+      dateOrs.push({
+        period: {
+          OR: [
+            { fec_inicio: { gte: startDate, lte: endDate } },
+            { fec_fin: { gte: startDate, lte: endDate } },
+            { AND: [{ fec_inicio: { lte: startDate } }, { fec_fin: { gte: endDate } }] }
+          ]
+        }
+      });
+      dateOrs.push({
+        created_at: { gte: startDate, lte: endDate }
+      });
+    } else if (startDate) {
+      dateOrs.push({ period: { fec_fin: { gte: startDate } } });
+      dateOrs.push({ created_at: { gte: startDate } });
+    } else if (endDate) {
+      dateOrs.push({ period: { fec_inicio: { lte: endDate } } });
+      dateOrs.push({ created_at: { lte: endDate } });
+    }
+
+    if (dateOrs.length > 0) {
+      andConditions.push({ OR: dateOrs });
+    }
   }
+
+  const where: any = andConditions.length > 0 ? { AND: andConditions } : {};
 
   const page = req.query.page ? Number(req.query.page) : null;
   const limit = req.query.limit ? Number(req.query.limit) : 10;
@@ -2028,29 +2056,55 @@ adminRoutes.post('/periods', async (req: any, res: any) => {
 // Endpoint para descargar todas las fotos en ZIP estructurado y Excel resumen
 adminRoutes.get('/reports/evidences-zip', async (req: any, res: any) => {
   try {
-    const { fec_inicio, fec_fin, id_activity, id_period, id_user } = req.query;
-    const where: any = {};
+    const { fec_inicio, fec_fin, fecha, id_activity, id_period, id_user } = req.query;
+    const andConditions: any[] = [];
 
-    if (id_activity) where.id = id_activity;
-    if (id_period) where.id_period = id_period;
+    if (id_activity) andConditions.push({ id: id_activity });
+    if (id_period) andConditions.push({ id_period });
     if (id_user) {
-      where.OR = [
-        { id_user: id_user as string },
-        { activityUsers: { some: { id_user: id_user as string } } }
-      ];
+      andConditions.push({
+        OR: [
+          { id_user: id_user as string },
+          { activityUsers: { some: { id_user: id_user as string } } }
+        ]
+      });
     }
 
-    if (fec_inicio || fec_fin) {
-      where.created_at = {};
-      if (fec_inicio) {
-        where.created_at.gte = new Date(String(fec_inicio));
+    const startParam = fec_inicio || fecha;
+    const endParam = fec_fin || fecha;
+
+    if (startParam || endParam) {
+      const startDate = startParam ? new Date(`${startParam}T00:00:00`) : null;
+      const endDate = endParam ? new Date(`${endParam}T23:59:59.999`) : null;
+
+      const dateOrs: any[] = [];
+      if (startDate && endDate) {
+        dateOrs.push({
+          period: {
+            OR: [
+              { fec_inicio: { gte: startDate, lte: endDate } },
+              { fec_fin: { gte: startDate, lte: endDate } },
+              { AND: [{ fec_inicio: { lte: startDate } }, { fec_fin: { gte: endDate } }] }
+            ]
+          }
+        });
+        dateOrs.push({
+          created_at: { gte: startDate, lte: endDate }
+        });
+      } else if (startDate) {
+        dateOrs.push({ period: { fec_fin: { gte: startDate } } });
+        dateOrs.push({ created_at: { gte: startDate } });
+      } else if (endDate) {
+        dateOrs.push({ period: { fec_inicio: { lte: endDate } } });
+        dateOrs.push({ created_at: { lte: endDate } });
       }
-      if (fec_fin) {
-        const endDate = new Date(String(fec_fin));
-        endDate.setDate(endDate.getDate() + 1);
-        where.created_at.lt = endDate;
+
+      if (dateOrs.length > 0) {
+        andConditions.push({ OR: dateOrs });
       }
     }
+
+    const where: any = andConditions.length > 0 ? { AND: andConditions } : {};
 
     const activities = await prisma.activities.findMany({
       where,
@@ -2102,7 +2156,7 @@ adminRoutes.get('/reports/evidences-zip', async (req: any, res: any) => {
 
     worksheet.columns = [
       { header: 'N°', key: 'index', width: 6 },
-      { header: 'Actividad', key: 'actividad', width: 30 },
+      { header: 'Actividad', key: 'actividad', width: 32 },
       { header: 'Sede / Ubicación', key: 'sede', width: 25 },
       { header: 'Región Sede', key: 'sede_reg', width: 18 },
       { header: 'Fecha Desarrollo', key: 'fecha_desarrollo', width: 18 },
@@ -2129,7 +2183,7 @@ adminRoutes.get('/reports/evidences-zip', async (req: any, res: any) => {
 
     const sanitize = (str: string) => {
       return (str || 'Sin_Nombre')
-        .replace(/[\/\\:*?"<>|]/g, '_')
+        .replace(/[\/\\:*?"<>|#]/g, '_')
         .trim();
     };
 
@@ -2155,91 +2209,129 @@ adminRoutes.get('/reports/evidences-zip', async (req: any, res: any) => {
 
     for (const act of activities) {
       const actDateStr = formatDateShort(act.period?.fec_inicio || act.created_at);
-      const actFolderName = `#${sanitize(act.actividad)}_${actDateStr}`;
+      // Sin el símbolo numeral (#) al inicio
+      const actFolderName = `${sanitize(act.actividad)}_${actDateStr}`;
 
-      const attendances = act.attendances || [];
+      // Recopilar todos los supervisores asignados a esta actividad
+      const assignedUsersMap = new Map<string, any>();
+      if (act.user) {
+        assignedUsersMap.set(act.user.id, act.user);
+      }
+      if (act.activityUsers && act.activityUsers.length > 0) {
+        for (const au of act.activityUsers) {
+          if (au.user) {
+            assignedUsersMap.set(au.user.id, au.user);
+          }
+        }
+      }
+      for (const att of (act.attendances || [])) {
+        if (att.user && !assignedUsersMap.has(att.user.id)) {
+          assignedUsersMap.set(att.user.id, att.user);
+        }
+      }
 
-      if (attendances.length > 0) {
-        for (const att of attendances) {
-          const supervisorObj = att.user?.supervisor;
+      const attendancesByUser = new Map<string, any[]>();
+      for (const att of (act.attendances || [])) {
+        const list = attendancesByUser.get(att.id_user) || [];
+        list.push(att);
+        attendancesByUser.set(att.id_user, list);
+      }
+
+      if (assignedUsersMap.size > 0) {
+        for (const [userId, userObj] of assignedUsersMap.entries()) {
+          const userAtts = attendancesByUser.get(userId) || [];
+          const supervisorObj = userObj.supervisor;
           const supervisorName = supervisorObj
             ? `${supervisorObj.nombres} ${supervisorObj.ape_pat || ''}`.trim()
-            : att.user?.username || 'Supervisor';
+            : userObj.username || 'Supervisor';
 
           const supervisorFolderName = sanitize(supervisorName);
 
-          // Extraer fotos
-          let photoList: string[] = [];
-          if (Array.isArray(att.photos)) {
-            photoList = att.photos.filter((p: any) => typeof p === 'string' && p.length > 0);
-          } else if (typeof att.photos === 'string') {
-            try {
-              const parsed = JSON.parse(att.photos);
-              if (Array.isArray(parsed)) photoList = parsed;
-              else photoList = [att.photos];
-            } catch {
-              photoList = [att.photos];
-            }
-          }
-
-          totalFotosSum += photoList.length;
-
-          worksheet.addRow({
-            index: rowIndex++,
-            actividad: act.actividad,
-            sede: act.location?.nombre || att.location?.nombre || 'Sede Central',
-            sede_reg: act.location?.sede_reg || 'Lima',
-            fecha_desarrollo: formatDateFull(act.period?.fec_inicio || act.created_at),
-            supervisor: supervisorName,
-            doc: supervisorObj?.doc || '-',
-            correo: att.user?.correo || '-',
-            estado: att.estado || act.estado || 'completado',
-            cant_fotos: photoList.length,
-            fec_marcacion: att.checked_in_at ? new Date(att.checked_in_at).toLocaleString('es-PE') : '-',
-            observacion: att.observacion || '-',
-          });
-
-          // Descargar y empaquetar fotos en la carpeta correspondente
-          for (let pIdx = 0; pIdx < photoList.length; pIdx++) {
-            const photoItem = photoList[pIdx];
-            const ext = photoItem.includes('.png') ? 'png' : 'jpg';
-            const fileName = `foto_${pIdx + 1}.${ext}`;
-            const zipPath = `${actFolderName}/${supervisorFolderName}/${fileName}`;
-
-            try {
-              if (photoItem.startsWith('http://') || photoItem.startsWith('https://')) {
-                const response = await fetch(photoItem);
-                if (response.ok) {
-                  const arrayBuffer = await response.arrayBuffer();
-                  archive.append(Buffer.from(arrayBuffer), { name: zipPath });
+          if (userAtts.length > 0) {
+            for (const att of userAtts) {
+              let photoList: string[] = [];
+              if (Array.isArray(att.photos)) {
+                photoList = att.photos.filter((p: any) => typeof p === 'string' && p.length > 0);
+              } else if (typeof att.photos === 'string') {
+                try {
+                  const parsed = JSON.parse(att.photos);
+                  if (Array.isArray(parsed)) photoList = parsed;
+                  else photoList = [att.photos];
+                } catch {
+                  photoList = [att.photos];
                 }
-              } else if (photoItem.startsWith('data:image/')) {
-                const base64Data = photoItem.replace(/^data:image\/\w+;base64,/, '');
-                archive.append(Buffer.from(base64Data, 'base64'), { name: zipPath });
               }
-            } catch (pErr) {
-              console.warn(`[ZIP Report] Error al descargar foto ${photoItem}:`, pErr);
+
+              totalFotosSum += photoList.length;
+
+              worksheet.addRow({
+                index: rowIndex++,
+                actividad: act.actividad,
+                sede: act.location?.nombre || att.location?.nombre || 'Sede Central',
+                sede_reg: act.location?.sede_reg || 'Lima',
+                fecha_desarrollo: formatDateFull(act.period?.fec_inicio || act.created_at),
+                supervisor: supervisorName,
+                doc: supervisorObj?.doc || '-',
+                correo: userObj.correo || '-',
+                estado: photoList.length > 0 ? (att.estado || 'completado') : 'pendiente',
+                cant_fotos: photoList.length,
+                fec_marcacion: att.checked_in_at ? new Date(att.checked_in_at).toLocaleString('es-PE') : '-',
+                observacion: att.observacion || '-',
+              });
+
+              // Descargar y empaquetar fotos en la carpeta correspondente
+              for (let pIdx = 0; pIdx < photoList.length; pIdx++) {
+                const photoItem = photoList[pIdx];
+                const ext = photoItem.includes('.png') ? 'png' : 'jpg';
+                const fileName = `foto_${pIdx + 1}.${ext}`;
+                const zipPath = `${actFolderName}/${supervisorFolderName}/${fileName}`;
+
+                try {
+                  if (photoItem.startsWith('http://') || photoItem.startsWith('https://')) {
+                    const response = await fetch(photoItem);
+                    if (response.ok) {
+                      const arrayBuffer = await response.arrayBuffer();
+                      archive.append(Buffer.from(arrayBuffer), { name: zipPath });
+                    }
+                  } else if (photoItem.startsWith('data:image/')) {
+                    const base64Data = photoItem.replace(/^data:image\/\w+;base64,/, '');
+                    archive.append(Buffer.from(base64Data, 'base64'), { name: zipPath });
+                  }
+                } catch (pErr) {
+                  console.warn(`[ZIP Report] Error al descargar foto ${photoItem}:`, pErr);
+                }
+              }
             }
+          } else {
+            // Supervisor asignado que no tiene fotos ni asistencias registradas
+            worksheet.addRow({
+              index: rowIndex++,
+              actividad: act.actividad,
+              sede: act.location?.nombre || 'Sede Central',
+              sede_reg: act.location?.sede_reg || 'Lima',
+              fecha_desarrollo: formatDateFull(act.period?.fec_inicio || act.created_at),
+              supervisor: supervisorName,
+              doc: supervisorObj?.doc || '-',
+              correo: userObj.correo || '-',
+              estado: 'pendiente',
+              cant_fotos: 0,
+              fec_marcacion: '-',
+              observacion: act.detalle || 'Sin evidencias registradas',
+            });
           }
         }
       } else {
-        // Actividad sin asistencias aún
-        const defaultUser = act.user;
-        const defaultSupervisor = defaultUser?.supervisor;
-        const supervisorName = defaultSupervisor
-          ? `${defaultSupervisor.nombres} ${defaultSupervisor.ape_pat || ''}`.trim()
-          : defaultUser?.username || 'Sin supervisor';
-
+        // Actividad sin ningún usuario asignado aún
         worksheet.addRow({
           index: rowIndex++,
           actividad: act.actividad,
           sede: act.location?.nombre || 'Sede Central',
           sede_reg: act.location?.sede_reg || 'Lima',
           fecha_desarrollo: formatDateFull(act.period?.fec_inicio || act.created_at),
-          supervisor: supervisorName,
-          doc: defaultSupervisor?.doc || '-',
-          correo: defaultUser?.correo || '-',
-          estado: act.estado || 'pendiente',
+          supervisor: 'Sin supervisor asignado',
+          doc: '-',
+          correo: '-',
+          estado: 'pendiente',
           cant_fotos: 0,
           fec_marcacion: '-',
           observacion: act.detalle || '-',
