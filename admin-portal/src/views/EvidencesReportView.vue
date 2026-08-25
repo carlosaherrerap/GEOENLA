@@ -10,9 +10,35 @@
         :disabled="downloading"
         @click="downloadZipReport"
       >
-        <i class="ph ph-download-simple"></i>
+        <span v-if="downloading" class="spinner-sm" style="margin-right: 8px;"></span>
+        <i v-else class="ph ph-download-simple" style="margin-right: 6px;"></i>
         {{ downloading ? 'Generando y Descargando ZIP...' : 'Descargar Evidencias (ZIP + Excel)' }}
       </button>
+    </div>
+
+    <!-- MODAL OVERLAY DE CARGA ANIMADA -->
+    <div v-if="downloading" class="modal-overlay">
+      <div class="modal-card" style="max-width: 480px; text-align: center; padding: 28px 24px;">
+        <div style="display: flex; justify-content: center; margin-bottom: 18px;">
+          <div class="loading-spinner-circle"></div>
+        </div>
+        <h3 style="font-size: 1.15rem; font-weight: 700; color: var(--text-heading); margin-bottom: 8px;">
+          Generando Archivo ZIP y Reporte Excel
+        </h3>
+        <p style="font-size: 0.85rem; color: var(--text-body); line-height: 1.5; margin-bottom: 20px;">
+          El servidor está descargando las imágenes de evidencias, organizando la estructura de carpetas por actividad y supervisor, y consolidando el resumen en la hoja de cálculo.
+        </p>
+
+        <!-- BARRA DE PROGRESO ANIMADA -->
+        <div class="progress-bar-container">
+          <div class="progress-bar-indeterminate"></div>
+        </div>
+
+        <div style="margin-top: 14px; display: flex; justify-content: space-between; font-size: 0.78rem; color: var(--text-muted); font-family: var(--font-mono);">
+          <span>Estado: Procesando paquetes</span>
+          <span>Por favor no cierres la ventana</span>
+        </div>
+      </div>
     </div>
 
     <!-- EXPLANATION CARD -->
@@ -283,6 +309,68 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 14px;
+}
+
+.spinner-sm {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  display: inline-block;
+  animation: spin-anim 0.8s linear infinite;
+}
+
+.loading-spinner-circle {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--border-subtle);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin-anim 0.8s linear infinite;
+}
+
+.progress-bar-container {
+  width: 100%;
+  height: 6px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+
+.progress-bar-indeterminate {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--primary);
+  border-radius: 3px;
+  animation: indeterminate-anim 1.6s ease-in-out infinite;
+}
+
+@keyframes spin-anim {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes indeterminate-anim {
+  0% {
+    left: -35%;
+    width: 35%;
+  }
+  50% {
+    left: 25%;
+    width: 50%;
+  }
+  100% {
+    left: 100%;
+    width: 35%;
+  }
 }
 
 @media (max-width: 900px) {
