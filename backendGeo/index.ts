@@ -2071,16 +2071,30 @@ adminRoutes.get('/reports/evidences-zip', async (req: any, res: any) => {
       orderBy: { created_at: 'desc' },
     });
 
-    // Crear archivo ZIP
-    const archive = archiver('zip', { zlib: { level: 6 } });
+    // Crear instancia de ZIP compatible con archiver v7, v8, CommonJS y ESM
+    const createZipArchive = (options: any = { zlib: { level: 6 } }) => {
+      const arch = require('archiver');
+      if (typeof arch === 'function') return arch('zip', options);
+      if (arch.ZipArchive) return new arch.ZipArchive(options);
+      if (arch.Archiver) return new arch.Archiver('zip', options);
+      if (arch.default) {
+        if (typeof arch.default === 'function') return arch.default('zip', options);
+        if (arch.default.ZipArchive) return new arch.default.ZipArchive(options);
+      }
+      throw new Error('No se pudo inicializar la librería archiver.');
+    };
+
+    const archive = createZipArchive({ zlib: { level: 6 } });
 
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="Evidencias_${new Date().toISOString().split('T')[0]}.zip"`);
 
     archive.pipe(res);
 
-    // Preparar libro de Excel
-    const workbook = new ExcelJS.Workbook();
+    // Preparar libro de Excel compatible con CJS y ESM
+    const excelModule = require('exceljs');
+    const ExcelLib = excelModule.Workbook ? excelModule : (excelModule.default || ExcelJS);
+    const workbook = new ExcelLib.Workbook();
     workbook.creator = 'GeoApp Sistema';
     workbook.created = new Date();
 
