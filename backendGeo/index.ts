@@ -797,8 +797,22 @@ protectedRoutes.post('/trackings', async (req: any, res) => {
   }
 
   let tracking: any = null;
-  // Si el punto es estático en el mismo lugar, omitir inserción en PostgreSQL pero actualizar Redis/plataforma
-  if (!is_static) {
+  let shouldSaveDb = !is_static;
+
+  if (is_static) {
+    // Si es estático, verificar si hace más de 2 minutos (120000 ms) que no se guarda un punto para este usuario
+    const lastDbPoint = await prisma.trackings.findFirst({
+      where: { id_user: req.user.id },
+      orderBy: { recorded_at: 'desc' },
+      select: { recorded_at: true },
+    });
+    const lastTimeMs = lastDbPoint ? new Date(lastDbPoint.recorded_at).getTime() : 0;
+    if (serverNow.getTime() - lastTimeMs >= 2 * 60 * 1000) {
+      shouldSaveDb = true; // Forzar guardado en base de datos cada 2 minutos para registrar presencia y hora inicial
+    }
+  }
+
+  if (shouldSaveDb) {
     tracking = await prisma.trackings.create({
       data: {
         id_user: req.user.id,
@@ -829,9 +843,9 @@ protectedRoutes.post('/trackings', async (req: any, res) => {
   }).catch(() => { });
 
   res.status(201).json({
-    message: is_static ? 'Señal en vivo actualizada (punto estático).' : 'Punto registrado.',
+    message: shouldSaveDb ? 'Punto registrado.' : 'Señal en vivo actualizada (punto estático).',
     tracking: tracking ? { ...tracking, id: tracking.id.toString() } : null,
-    static: !!is_static,
+    static: !shouldSaveDb,
   });
 });
 
@@ -952,9 +966,12 @@ protectedRoutes.get('/trackings', async (req: any, res) => {
 
   if (req.query.fecha) {
     const dStr = String(req.query.fecha).trim();
+    // Zona horaria de Perú (UTC-5)
+    const startLima = new Date(`${dStr}T00:00:00-05:00`);
+    const endLima = new Date(`${dStr}T23:59:59.999-05:00`);
     where.recorded_at = {
-      gte: new Date(`${dStr}T00:00:00.000Z`),
-      lte: new Date(`${dStr}T23:59:59.999Z`),
+      gte: isNaN(startLima.getTime()) ? new Date(`${dStr}T00:00:00.000Z`) : startLima,
+      lte: isNaN(endLima.getTime()) ? new Date(`${dStr}T23:59:59.999Z`) : endLima,
     };
   }
 

@@ -126,9 +126,43 @@ class OfflineStorageService {
   }
 
   public async clearSyncedTracking(syncedPoints: TrackingPoint[]): Promise<void> {
-    this.trackingQueue = this.trackingQueue.filter(item => !syncedPoints.includes(item));
+    const syncedSet = new Set(syncedPoints.map(p => `${p.lat}_${p.lng}_${p.recorded_at}`));
+    this.trackingQueue = this.trackingQueue.filter(item => !syncedSet.has(`${item.lat}_${item.lng}_${item.recorded_at}`));
     await this.persistTrackingQueue();
     this.lastSyncedAt = new Date().toISOString();
+  }
+
+  public async syncAllPending(apiService: any): Promise<{ trackingSynced: number; itemsSynced: number }> {
+    let trackingSynced = 0;
+    let itemsSynced = 0;
+
+    // 1. Sincronizar cola de puntos de ubicación GPS (trackingQueue)
+    const trackingBatch = this.getPendingTrackingPoints();
+    if (trackingBatch.length > 0) {
+      try {
+        await apiService.sendTrackingBatch(trackingBatch);
+        await this.clearSyncedTracking(trackingBatch);
+        trackingSynced = trackingBatch.length;
+        console.log(`[OfflineStorage] Sincronizados ${trackingSynced} puntos de rastreo GPS con éxito.`);
+      } catch (e: any) {
+        console.log('[OfflineStorage] Error de red al sincronizar puntos GPS:', e?.message || e);
+      }
+    }
+
+    // 2. Sincronizar cola general de operaciones (asistencias, marcaciones)
+    const syncBatch = this.getPendingSyncQueue();
+    if (syncBatch.length > 0) {
+      try {
+        await apiService.syncBulk(syncBatch);
+        await this.clearSyncedQueue(syncBatch.length);
+        itemsSynced = syncBatch.length;
+        console.log(`[OfflineStorage] Sincronizadas ${itemsSynced} operaciones con éxito.`);
+      } catch (e: any) {
+        console.log('[OfflineStorage] Error de red al sincronizar operaciones:', e?.message || e);
+      }
+    }
+
+    return { trackingSynced, itemsSynced };
   }
 
   public async getSwitchState(): Promise<boolean> {
