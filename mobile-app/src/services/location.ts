@@ -49,6 +49,7 @@ class LocationTrackingService {
 
   private watchdogTimer: any = null;
   private hourlyGpsCycleTimer: any = null;
+  private autoSyncTimer: any = null;
   private isCyclicRefreshing = false;
   private isGpsWarningAlertActive = false;
   private onStatusChange: ((active: boolean) => void) | null = null;
@@ -57,6 +58,22 @@ class LocationTrackingService {
     // Iniciar el watchdog inmediatamente para sincronizar el GPS físico y el switch en tiempo real
     this.startGpsWatchdog();
     this.startHourlyGpsCycle();
+    this.startAutoSyncWorker();
+  }
+
+  private startAutoSyncWorker() {
+    if (this.autoSyncTimer) return;
+    // Sincronización automática de fondo cada 30 segundos si hay elementos acumulados
+    this.autoSyncTimer = setInterval(async () => {
+      try {
+        if (offlineStorage.getPendingCount() > 0) {
+          console.log(`[AutoSync] Detectados ${offlineStorage.getPendingCount()} elementos pendientes. Sincronizando de forma automática...`);
+          await offlineStorage.syncAllPending(apiService);
+        }
+      } catch (syncErr) {
+        console.warn('[AutoSync Error]', syncErr);
+      }
+    }, 30000);
   }
 
   public getLastPointRecordedTimestamp(): number {
@@ -314,25 +331,29 @@ class LocationTrackingService {
       return;
     }
 
-    // 2. Filtro Anti-Jitter Estático: Ignorar pequeñas oscilaciones (< 10 metros)
+    // 2. Filtro Anti-Jitter Estático: Si el usuario está en el mismo punto (< 3 metros)
     if (this.lastSavedPoint) {
       const distFromLast = calculateDistanceMeters(latitude, longitude, this.lastSavedPoint.lat, this.lastSavedPoint.lng);
       const speedVal = speed || 0;
       if (distFromLast < MIN_DISTANCE_DELTA_METERS && speedVal < 0.5) {
-        console.log(`[AntiJitter] Usuario en el mismo punto (${distFromLast.toFixed(1)}m). Transmitiendo señal viva estática a plataforma sin duplicar en DB.`);
-        const staticPoint: any = {
-          id_activity: this.currentActivityId,
-          lat: Number(latitude.toFixed(7)),
-          lng: Number(longitude.toFixed(7)),
-          accuracy: accuracy ? Number(accuracy.toFixed(1)) : 5.0,
-          speed: speed ? Number(speed.toFixed(1)) : 0.0,
-          battery_level: realBatteryLevel,
-          recorded_at: new Date(locationObj.timestamp).toISOString(),
-          is_static: true,
-        };
-        apiService.sendTrackingPoint(staticPoint).catch(() => {});
-        apiService.updateDeviceInfo({ battery_level: realBatteryLevel }).catch(() => {});
-        return;
+        // Si han transcurrido menos de 2 minutos (120000 ms), enviar latido estático sin duplicar en DB
+        if (now - this.lastDbSaveTimestamp < DB_SAVE_INTERVAL_MS) {
+          const staticPoint: any = {
+            id_activity: this.currentActivityId,
+            lat: Number(latitude.toFixed(7)),
+            lng: Number(longitude.toFixed(7)),
+            accuracy: accuracy ? Number(accuracy.toFixed(1)) : 5.0,
+            speed: speed ? Number(speed.toFixed(1)) : 0.0,
+            battery_level: realBatteryLevel,
+            recorded_at: new Date(locationObj.timestamp).toISOString(),
+            is_static: true,
+          };
+          apiService.sendTrackingPoint(staticPoint).catch(() => {});
+          apiService.updateDeviceInfo({ battery_level: realBatteryLevel }).catch(() => {});
+          return;
+        }
+        // Si han pasado más de 2 minutos, continúa hacia abajo para registrar el punto formal en la DB
+        console.log(`[AntiJitter] Usuario quieto (${distFromLast.toFixed(1)}m) pero transcurrieron más de 2 minutos. Registrando punto periódico en DB...`);
       }
     }
 
@@ -373,16 +394,10 @@ class LocationTrackingService {
   }
 
   private async flushOfflinePoints() {
-    const pendingPoints = offlineStorage.getPendingTrackingPoints();
-    if (pendingPoints.length === 0) return;
-
-    console.log(`[SyncOffline] Sincronizando ${pendingPoints.length} puntos offline acumulados...`);
     try {
-      await apiService.sendTrackingBatch(pendingPoints);
-      await offlineStorage.clearSyncedTracking(pendingPoints);
-      console.log('[SyncOffline] Puntos offline sincronizados con éxito.');
+      await offlineStorage.syncAllPending(apiService);
     } catch (err) {
-      console.log('[SyncOffline] El servidor aún no es alcanzable. Se mantienen en SQLite.');
+      console.log('[SyncOffline] No se pudo completar la sincronización automática de fondo.');
     }
   }
 }

@@ -90,7 +90,14 @@ export const DeviceInfoScreen: React.FC<Props> = ({ onBack }) => {
     return () => unsubscribe();
   }, []);
 
-  const pendingCount = offlineStorage.getPendingCount();
+  const [pendingCount, setPendingCount] = useState(offlineStorage.getPendingCount());
+
+  useEffect(() => {
+    const updateCount = () => setPendingCount(offlineStorage.getPendingCount());
+    updateCount();
+    const interval = setInterval(updateCount, 2000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleUpdateDevice = async () => {
     try {
@@ -102,19 +109,27 @@ export const DeviceInfoScreen: React.FC<Props> = ({ onBack }) => {
   };
 
   const handleManualSync = async () => {
-    const queue = offlineStorage.getPendingSyncQueue();
-    if (queue.length === 0) {
-      Alert.alert('Sincronización', 'No hay elementos pendientes por sincronizar.');
+    const currentPending = offlineStorage.getPendingCount();
+    if (currentPending === 0) {
+      Alert.alert('Sincronización', 'Todo se encuentra al día. No hay elementos pendientes por sincronizar.');
       return;
     }
 
     setSyncing(true);
     try {
-      await apiService.syncBulk(queue);
-      offlineStorage.clearSyncedQueue(queue.length);
-      Alert.alert('¡Sincronizado!', `${queue.length} registros sincronizados con la nube.`);
+      const { trackingSynced, itemsSynced } = await offlineStorage.syncAllPending(apiService);
+      const totalSynced = trackingSynced + itemsSynced;
+      setPendingCount(offlineStorage.getPendingCount());
+
+      if (totalSynced > 0) {
+        Alert.alert('¡Sincronizado!', `${totalSynced} registro(s) sincronizados con la nube (${trackingSynced} puntos GPS, ${itemsSynced} operaciones).`);
+      } else if (offlineStorage.getPendingCount() === 0) {
+        Alert.alert('Sincronización', 'Todo se encuentra al día.');
+      } else {
+        Alert.alert('Aviso', 'No se pudo conectar con el servidor. La app lo sincronizará automáticamente en segundo plano cuando detecte señal.');
+      }
     } catch (err: any) {
-      Alert.alert('Error de sincronización', err.message || 'Error al conectar con la base de datos.');
+      Alert.alert('Error de sincronización', err.message || 'Error al conectar con el servidor.');
     } finally {
       setSyncing(false);
     }

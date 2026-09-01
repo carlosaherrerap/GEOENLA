@@ -261,22 +261,20 @@ const selectedUserActive = computed(() => {
 })
 
 const firstTime = computed(() => {
-  const valid = trackings.value.length > 1 ? trackings.value.slice(1) : trackings.value
-  if (valid.length === 0) return '-'
-  return new Date(valid[0].recorded_at).toLocaleTimeString()
+  if (trackings.value.length === 0) return '-'
+  return new Date(trackings.value[0].recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 })
 
 const lastTime = computed(() => {
+  if (trackings.value.length > 0) {
+    const lastPointDate = trackings.value[trackings.value.length - 1].recorded_at
+    return new Date(lastPointDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  }
   const userLastSeen = selectedUserObj.value?.deviceDetail?.last_seen_at || selectedUserObj.value?.last_seen_at
-  const valid = trackings.value.length > 1 ? trackings.value.slice(1) : trackings.value
-  const lastTrackingTime = valid.length > 0 ? valid[valid.length - 1].recorded_at : null
-
-  let latestDateMs = 0
-  if (userLastSeen) latestDateMs = Math.max(latestDateMs, new Date(userLastSeen).getTime())
-  if (lastTrackingTime) latestDateMs = Math.max(latestDateMs, new Date(lastTrackingTime).getTime())
-
-  if (latestDateMs === 0) return '-'
-  return new Date(latestDateMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  if (userLastSeen) {
+    return new Date(userLastSeen).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  }
+  return '-'
 })
 
 function isUserActive(u) {
