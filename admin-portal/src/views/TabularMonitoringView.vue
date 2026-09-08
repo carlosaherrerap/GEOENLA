@@ -29,6 +29,25 @@
           @input="onSearchInput"
         />
       </div>
+      <div class="filter-field" style="flex: 1;">
+        <label class="filter-label">Fecha Registro</label>
+        <div style="display: flex; gap: 4px; align-items: center;">
+          <input
+            v-model="selectedFecha"
+            type="date"
+            class="form-control"
+            @change="onFechaChange"
+          />
+          <button
+            v-if="selectedFecha"
+            class="btn-clear-date"
+            @click="clearFechaFilter"
+            title="Ver todas las fechas"
+          >
+            X
+          </button>
+        </div>
+      </div>
       <div class="filter-field" style="flex: 1.2;">
         <label class="filter-label">Sede Regional</label>
         <select v-model="selectedSede" class="form-control" @change="onSedeChange">
@@ -38,13 +57,13 @@
           </option>
         </select>
       </div>
-      <div class="filter-field" style="flex: 1; display: flex; flex-direction: column; justify-content: flex-end;">
+      <div class="filter-field" style="flex: 0.8; display: flex; flex-direction: column; justify-content: flex-end;">
         <label class="auto-refresh-label">
           <input type="checkbox" v-model="autoRefresh" @change="toggleAutoRefresh" />
           <span>Auto-actualizar (30s)</span>
         </label>
       </div>
-      <div class="filter-field counter-field" style="flex: 1;">
+      <div class="filter-field counter-field" style="flex: 0.6;">
         <div class="counter-box">
           <span class="counter-label">Registros</span>
           <span class="counter-value">{{ filteredRows.length }}</span>
@@ -204,6 +223,23 @@ const selectedSede = ref('')
 const autoRefresh = ref(false)
 const lastUpdated = ref(new Date())
 
+// Filtro de fecha: por defecto hoy (DD/MM/YYYY)
+function getTodayIso() {
+  const d = new Date()
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+function isoToDisplay(isoStr) {
+  if (!isoStr) return ''
+  const [yyyy, mm, dd] = isoStr.split('-')
+  return `${dd}/${mm}/${yyyy}`
+}
+
+const selectedFecha = ref(getTodayIso())
+
 // Paginacion de 15 en 15
 const currentPage = ref(1)
 const pageSize = ref(15)
@@ -221,6 +257,11 @@ const availableSedes = computed(() => {
 
 const filteredRows = computed(() => {
   let list = rows.value
+  // Filtro por fecha (FECHA_REG en formato DD/MM/YYYY)
+  if (selectedFecha.value) {
+    const fechaDisplay = isoToDisplay(selectedFecha.value)
+    list = list.filter(r => r.fecha_reg === fechaDisplay)
+  }
   if (selectedSede.value) {
     list = list.filter(r => r.sede_reg === selectedSede.value)
   }
@@ -298,6 +339,15 @@ function goToPage(p) {
 function onSedeChange() {
   currentPage.value = 1
   fetchData()
+}
+
+function onFechaChange() {
+  currentPage.value = 1
+}
+
+function clearFechaFilter() {
+  selectedFecha.value = ''
+  currentPage.value = 1
 }
 
 function onSearchInput() {
@@ -899,5 +949,24 @@ onUnmounted(() => {
   align-items: center;
   font-size: 0.75rem;
   color: #555;
+}
+
+/* Boton limpiar filtro de fecha */
+.btn-clear-date {
+  background-color: #eee;
+  color: #333;
+  border: 1px solid #aaa;
+  border-radius: 3px;
+  padding: 5px 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  line-height: 1;
+  box-shadow: none !important;
+}
+
+.btn-clear-date:hover {
+  background-color: #d0d0d0;
+  border-color: #666;
 }
 </style>
