@@ -2386,19 +2386,18 @@ adminRoutes.get('/reports/evidences-zip', async (req: any, res: any) => {
   }
 });
 
-// Cache en memoria para geocodificación inversa tabular
-const geocodeCacheTabular = new Map<string, { departamento: string; provincia: string }>();
+// Cache en memoria para geocodificación inversa tabular (departamento, provincia, distrito)
+const geocodeCacheTabular = new Map<string, { departamento: string; provincia: string; distrito: string }>();
 
 async function getReverseGeocodeTabular(
   lat: number,
-  lng: number,
-  fallbackDept: string,
-  fallbackProv: string
-): Promise<{ departamento: string; provincia: string }> {
+  lng: number
+): Promise<{ departamento: string; provincia: string; distrito: string }> {
   if (!lat || !lng || (lat === 0 && lng === 0) || isNaN(lat) || isNaN(lng)) {
     return {
-      departamento: (fallbackDept || 'LIMA').toUpperCase(),
-      provincia: (fallbackProv || 'LIMA').toUpperCase()
+      departamento: 'SIN SEÑAL GPS',
+      provincia: '-',
+      distrito: '-'
     };
   }
 
@@ -2409,7 +2408,7 @@ async function getReverseGeocodeTabular(
 
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 1200);
+    const timeout = setTimeout(() => controller.abort(), 1800);
     const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
     const res = await fetch(url, {
       signal: controller.signal,
@@ -2423,19 +2422,22 @@ async function getReverseGeocodeTabular(
     if (res.ok) {
       const data: any = await res.json();
       const addr = data.address || {};
-      const departamento = (addr.state || addr.region || fallbackDept || 'LIMA').toUpperCase();
-      const provincia = (addr.province || addr.county || addr.city || addr.city_district || fallbackProv || 'LIMA').toUpperCase();
-      const result = { departamento, provincia };
+      const departamento = (addr.state || addr.region || '').replace(/departamento de\s*/i, '').trim().toUpperCase() || 'LIMA';
+      const provincia = (addr.province || addr.county || addr.city || '').replace(/provincia de\s*/i, '').trim().toUpperCase() || departamento;
+      const distrito = (addr.suburb || addr.district || addr.city_district || addr.town || addr.village || addr.neighbourhood || '').trim().toUpperCase() || provincia;
+      
+      const result = { departamento, provincia, distrito };
       geocodeCacheTabular.set(cacheKey, result);
       return result;
     }
   } catch (_e) {
-    // Si falla o timeout, usar fallback
+    // Si falla o timeout
   }
 
   const fallback = {
-    departamento: (fallbackDept || 'LIMA').toUpperCase(),
-    provincia: (fallbackProv || 'LIMA').toUpperCase()
+    departamento: 'EN RUTA',
+    provincia: '-',
+    distrito: '-'
   };
   geocodeCacheTabular.set(cacheKey, fallback);
   return fallback;
@@ -2488,6 +2490,16 @@ adminRoutes.get('/supervisors/tabular', async (req: any, res: any) => {
     const userIds = allSupervisors.flatMap(s => s.users.map(u => u.id));
     const trackingsMap = new Map<string, any>();
 
+    // Consultar ubicaciones en Redis si está disponible
+    let redisLocations: Record<string, any> | null = null;
+    try {
+      if (userIds.length > 0) {
+        redisLocations = await getLatestUserLocations(userIds);
+      }
+    } catch (_redisErr) {
+      redisLocations = null;
+    }
+
     if (userIds.length > 0) {
       const userTrackings = await Promise.all(
         userIds.map(uid =>
@@ -2513,20 +2525,36 @@ adminRoutes.get('/supervisors/tabular', async (req: any, res: any) => {
     const tabularRows = await Promise.all(
       allSupervisors.map(async (sup, index) => {
         const userObj = sup.users[0] || null;
-        const tracking = userObj ? trackingsMap.get(userObj.id) : null;
+        const dbTracking = userObj ? trackingsMap.get(userObj.id) : null;
+        const redisTracking = (userObj && redisLocations) ? redisLocations[userObj.id] : null;
         const deviceDetail = userObj?.deviceDetail || null;
         const lastLogin = userObj?.loginLogs?.[0] || null;
 
         const sedeReg = (sup.location?.sede_reg || 'LIMA').toUpperCase();
-        const sedeJuris = (sup.location?.sede_juris || sup.location?.nombre || 'LIMA').toUpperCase();
         const doc = sup.doc || '-';
         const apellidosNombres = `${sup.ape_pat || ''} ${sup.ape_mat || ''} ${sup.nombres || ''}`.trim().toUpperCase() || 'SIN NOMBRE';
         const telefono = sup.telefono || '-';
         const cargo = 'SUPERVISOR NACIONAL';
 
+        // Determinar el tracking más reciente (Redis vs DB)
+        let activeTracking = dbTracking;
+        if (redisTracking && redisTracking.recorded_at) {
+          const redisTime = new Date(redisTracking.recorded_at).getTime();
+          const dbTime = dbTracking?.recorded_at ? new Date(dbTracking.recorded_at).getTime() : 0;
+          if (redisTime >= dbTime) {
+            activeTracking = {
+              id_user: userObj.id,
+              lat: redisTracking.lat,
+              lng: redisTracking.lng,
+              battery_level: redisTracking.battery_level,
+              recorded_at: redisTracking.recorded_at
+            };
+          }
+        }
+
         let lastTimestamp: Date | null = null;
-        if (tracking?.recorded_at) {
-          lastTimestamp = new Date(tracking.recorded_at);
+        if (activeTracking?.recorded_at) {
+          lastTimestamp = new Date(activeTracking.recorded_at);
         } else if (deviceDetail?.last_seen_at) {
           lastTimestamp = new Date(deviceDetail.last_seen_at);
         } else if (lastLogin?.created_at) {
@@ -2546,25 +2574,26 @@ adminRoutes.get('/supervisors/tabular', async (req: any, res: any) => {
         }
 
         let batStr = '-';
-        if (tracking?.battery_level !== null && tracking?.battery_level !== undefined) {
-          batStr = `${Math.round(Number(tracking.battery_level))}%`;
+        if (activeTracking?.battery_level !== null && activeTracking?.battery_level !== undefined) {
+          batStr = `${Math.round(Number(activeTracking.battery_level))}%`;
         } else if (deviceDetail?.battery_level !== null && deviceDetail?.battery_level !== undefined) {
           batStr = `${Math.round(Number(deviceDetail.battery_level))}%`;
         }
 
         const appVersion = deviceDetail?.app_version || lastLogin?.app_version || '1.1';
 
-        const rawLat = tracking ? Number(tracking.lat) : null;
-        const rawLng = tracking ? Number(tracking.lng) : null;
-        const latStr = rawLat !== null && !isNaN(rawLat) ? rawLat.toFixed(7) : '-';
-        const lngStr = rawLng !== null && !isNaN(rawLng) ? rawLng.toFixed(7) : '-';
+        const rawLat = activeTracking ? Number(activeTracking.lat) : null;
+        const rawLng = activeTracking ? Number(activeTracking.lng) : null;
+        const hasCoords = rawLat !== null && rawLng !== null && !isNaN(rawLat) && !isNaN(rawLng) && (rawLat !== 0 || rawLng !== 0);
 
-        const geo = await getReverseGeocodeTabular(
-          rawLat || 0,
-          rawLng || 0,
-          sedeReg,
-          sedeJuris
-        );
+        const latStr = hasCoords ? rawLat!.toFixed(7) : '-';
+        const lngStr = hasCoords ? rawLng!.toFixed(7) : '-';
+
+        // Obtener ubicación en tiempo real mediante geocodificación del punto GPS más reciente
+        let geo = { departamento: 'SIN SEÑAL GPS', provincia: '-', distrito: '-' };
+        if (hasCoords) {
+          geo = await getReverseGeocodeTabular(rawLat!, rawLng!);
+        }
 
         return {
           id: sup.id,
@@ -2583,6 +2612,7 @@ adminRoutes.get('/supervisors/tabular', async (req: any, res: any) => {
           longitud: lngStr,
           departamento: geo.departamento,
           provincia: geo.provincia,
+          distrito: geo.distrito,
           raw_timestamp: lastTimestamp ? lastTimestamp.toISOString() : null,
           is_active: lastTimestamp ? (Date.now() - lastTimestamp.getTime()) < 15 * 60 * 1000 : false
         };

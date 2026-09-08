@@ -4,7 +4,7 @@
     <div class="header-card">
       <div class="header-left">
         <h1 class="header-title">Monitoreo Tabular</h1>
-        <p class="header-subtitle">Consolidado general de supervisores, estado de dispositivos y ubicacion geografica</p>
+        <p class="header-subtitle">Consolidado general de supervisores, estado de dispositivos y ubicacion geografica en tiempo real</p>
       </div>
       <div class="header-actions">
         <button class="btn btn-secondary" @click="exportToExcel">
@@ -25,13 +25,13 @@
           v-model="searchQuery"
           type="text"
           class="form-control"
-          placeholder="DNI, Apellidos, Nombres, Telefono..."
+          placeholder="DNI, Apellidos, Nombres, Telefono, Ubicacion..."
           @input="onSearchInput"
         />
       </div>
       <div class="filter-field" style="flex: 1.2;">
         <label class="filter-label">Sede Regional</label>
-        <select v-model="selectedSede" class="form-control" @change="fetchData">
+        <select v-model="selectedSede" class="form-control" @change="onSedeChange">
           <option value="">-- Todas las Sedes --</option>
           <option v-for="sede in availableSedes" :key="sede" :value="sede">
             {{ sede }}
@@ -60,17 +60,17 @@
           <tr class="header-group-row">
             <th colspan="6" class="th-group th-sticky-personal">INFORMACION PERSONAL</th>
             <th colspan="4" class="th-group th-group-device">DETALLES DEL DISPOSITIVO</th>
-            <th colspan="4" class="th-group th-group-location">DETALLE UBICACION</th>
+            <th colspan="5" class="th-group th-group-location">DETALLE UBICACION (TIEMPO REAL)</th>
           </tr>
           <!-- Fila de Columnas Individuales -->
           <tr class="header-columns-row">
-            <!-- Informacion Personal (Sticky) -->
+            <!-- Informacion Personal (Sticky a la izquierda) -->
             <th class="th-col th-col-orden sticky-col-1">ORDEN</th>
             <th class="th-col th-col-sede sticky-col-2">SEDE REG</th>
             <th class="th-col th-col-dni sticky-col-3">DNI</th>
             <th class="th-col th-col-nombres sticky-col-4">APELLIDOS Y NOMBRES</th>
             <th class="th-col th-col-tel sticky-col-5">TELEFONO</th>
-            <th class="th-col th-col-cargo sticky-col-6">CARGO</th>
+            <th class="th-col th-col-cargo sticky-col-6 sticky-divider">CARGO</th>
 
             <!-- Detalles del Dispositivo (Scrollable) -->
             <th class="th-col th-col-fecha">FECHA_REG</th>
@@ -78,34 +78,35 @@
             <th class="th-col th-col-bat">%BAT</th>
             <th class="th-col th-col-ver">V</th>
 
-            <!-- Detalle Ubicacion (Scrollable) -->
+            <!-- Detalle Ubicacion Tiempo Real (Scrollable) -->
             <th class="th-col th-col-lat">LATITUD</th>
             <th class="th-col th-col-lng">LONGITUD</th>
             <th class="th-col th-col-dept">DEPARTAMENTO</th>
             <th class="th-col th-col-prov">PROVINCIA</th>
+            <th class="th-col th-col-dist">DISTRITO</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="loading && rows.length === 0">
-            <td colspan="14" class="cell-message">Cargando informacion de supervisores...</td>
+            <td colspan="15" class="cell-message">Cargando informacion de supervisores...</td>
           </tr>
           <tr v-else-if="filteredRows.length === 0">
-            <td colspan="14" class="cell-message">No se encontraron registros que coincidan con la busqueda.</td>
+            <td colspan="15" class="cell-message">No se encontraron registros que coincidan con la busqueda.</td>
           </tr>
           <tr
-            v-for="(row, idx) in filteredRows"
+            v-for="(row, idx) in paginatedRows"
             :key="row.id"
             :class="['body-row', idx % 2 === 0 ? 'row-even' : 'row-odd']"
           >
-            <!-- Informacion Personal (Sticky) -->
+            <!-- Informacion Personal (Sticky a la izquierda) -->
             <td class="td-cell td-col-orden sticky-col-1 text-center font-mono">{{ row.orden }}</td>
-            <td class="td-cell td-col-sede sticky-col-2 font-bold">{{ row.sede_reg }}</td>
+            <td class="td-cell td-col-sede sticky-col-2 font-bold wrap-cell">{{ row.sede_reg }}</td>
             <td class="td-cell td-col-dni sticky-col-3 font-mono">{{ row.dni }}</td>
-            <td class="td-cell td-col-nombres sticky-col-4 font-semibold text-truncate" :title="row.apellidos_nombres">
+            <td class="td-cell td-col-nombres sticky-col-4 font-semibold wrap-cell">
               {{ row.apellidos_nombres }}
             </td>
             <td class="td-cell td-col-tel sticky-col-5 font-mono">{{ row.telefono }}</td>
-            <td class="td-cell td-col-cargo sticky-col-6 sticky-divider text-muted">{{ row.cargo }}</td>
+            <td class="td-cell td-col-cargo sticky-col-6 sticky-divider text-muted wrap-cell">{{ row.cargo }}</td>
 
             <!-- Detalles del Dispositivo (Scrollable) -->
             <td class="td-cell td-col-fecha font-mono text-center">{{ row.fecha_reg }}</td>
@@ -115,14 +116,68 @@
             </td>
             <td class="td-cell td-col-ver font-mono text-center">{{ row.version }}</td>
 
-            <!-- Detalle Ubicacion (Scrollable) -->
+            <!-- Detalle Ubicacion Tiempo Real (Scrollable) -->
             <td class="td-cell td-col-lat font-mono text-right">{{ row.latitud }}</td>
             <td class="td-cell td-col-lng font-mono text-right">{{ row.longitud }}</td>
-            <td class="td-cell td-col-dept font-bold">{{ row.departamento }}</td>
-            <td class="td-cell td-col-prov">{{ row.provincia }}</td>
+            <td class="td-cell td-col-dept font-bold wrap-cell">{{ row.departamento }}</td>
+            <td class="td-cell td-col-prov wrap-cell">{{ row.provincia }}</td>
+            <td class="td-cell td-col-dist wrap-cell">{{ row.distrito }}</td>
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <!-- Barra de Paginacion de 15 en 15 -->
+    <div class="pagination-bar" v-if="filteredRows.length > 0">
+      <div class="pagination-info">
+        Mostrando {{ paginationStart }} - {{ paginationEnd }} de {{ filteredRows.length }} supervisores
+      </div>
+      <div class="pagination-controls">
+        <button
+          class="btn-page"
+          :disabled="currentPage === 1"
+          @click="goToPage(1)"
+          title="Primera Pagina"
+        >
+          &laquo;
+        </button>
+        <button
+          class="btn-page"
+          :disabled="currentPage === 1"
+          @click="goToPage(currentPage - 1)"
+          title="Pagina Anterior"
+        >
+          &lsaquo; Anterior
+        </button>
+
+        <div class="page-numbers">
+          <button
+            v-for="p in visiblePages"
+            :key="p"
+            :class="['btn-page', 'btn-page-number', p === currentPage ? 'btn-page-active' : '']"
+            @click="goToPage(p)"
+          >
+            {{ p }}
+          </button>
+        </div>
+
+        <button
+          class="btn-page"
+          :disabled="currentPage === totalPages"
+          @click="goToPage(currentPage + 1)"
+          title="Pagina Siguiente"
+        >
+          Siguiente &rsaquo;
+        </button>
+        <button
+          class="btn-page"
+          :disabled="currentPage === totalPages"
+          @click="goToPage(totalPages)"
+          title="Ultima Pagina"
+        >
+          &raquo;
+        </button>
+      </div>
     </div>
 
     <!-- Pie Informativo -->
@@ -149,6 +204,10 @@ const selectedSede = ref('')
 const autoRefresh = ref(false)
 const lastUpdated = ref(new Date())
 
+// Paginacion de 15 en 15
+const currentPage = ref(1)
+const pageSize = ref(15)
+
 let refreshTimer = null
 let searchDebounceTimer = null
 
@@ -173,13 +232,49 @@ const filteredRows = computed(() => {
       (r.telefono && r.telefono.toLowerCase().includes(q)) ||
       (r.sede_reg && r.sede_reg.toLowerCase().includes(q)) ||
       (r.departamento && r.departamento.toLowerCase().includes(q)) ||
-      (r.provincia && r.provincia.toLowerCase().includes(q))
+      (r.provincia && r.provincia.toLowerCase().includes(q)) ||
+      (r.distrito && r.distrito.toLowerCase().includes(q))
     )
   }
   return list.map((item, index) => ({
     ...item,
     orden: index + 1
   }))
+})
+
+const totalPages = computed(() => {
+  return Math.ceil(filteredRows.value.length / pageSize.value) || 1
+})
+
+const paginatedRows = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  const end = start + pageSize.value
+  return filteredRows.value.slice(start, end)
+})
+
+const paginationStart = computed(() => {
+  if (filteredRows.value.length === 0) return 0
+  return (currentPage.value - 1) * pageSize.value + 1
+})
+
+const paginationEnd = computed(() => {
+  return Math.min(currentPage.value * pageSize.value, filteredRows.value.length)
+})
+
+const visiblePages = computed(() => {
+  const total = totalPages.value
+  const cur = currentPage.value
+  const maxButtons = 5
+  let start = Math.max(1, cur - Math.floor(maxButtons / 2))
+  let end = Math.min(total, start + maxButtons - 1)
+  if (end - start + 1 < maxButtons) {
+    start = Math.max(1, end - maxButtons + 1)
+  }
+  const pages = []
+  for (let i = start; i <= end; i++) {
+    pages.push(i)
+  }
+  return pages
 })
 
 const lastUpdatedText = computed(() => {
@@ -193,6 +288,24 @@ const lastUpdatedText = computed(() => {
   const sec = String(d.getSeconds()).padStart(2, '0')
   return `${dd}/${mm}/${yyyy} ${hh}:${min}:${sec}`
 })
+
+function goToPage(p) {
+  if (p >= 1 && p <= totalPages.value) {
+    currentPage.value = p
+  }
+}
+
+function onSedeChange() {
+  currentPage.value = 1
+  fetchData()
+}
+
+function onSearchInput() {
+  clearTimeout(searchDebounceTimer)
+  searchDebounceTimer = setTimeout(() => {
+    currentPage.value = 1
+  }, 250)
+}
 
 function getBatteryClass(batStr) {
   if (!batStr || batStr === '-') return 'bat-neutral'
@@ -214,13 +327,6 @@ async function fetchData() {
   } finally {
     loading.value = false
   }
-}
-
-function onSearchInput() {
-  clearTimeout(searchDebounceTimer)
-  searchDebounceTimer = setTimeout(() => {
-    // La reactividad computada filtra automáticamente
-  }, 250)
 }
 
 function toggleAutoRefresh() {
@@ -251,7 +357,8 @@ function exportToExcel() {
     LATITUD: r.latitud,
     LONGITUD: r.longitud,
     DEPARTAMENTO: r.departamento,
-    PROVINCIA: r.provincia
+    PROVINCIA: r.provincia,
+    DISTRITO: r.distrito || '-'
   }))
 
   const worksheet = XLSX.utils.json_to_sheet(exportData)
@@ -454,7 +561,6 @@ onUnmounted(() => {
   position: relative;
   overflow-x: auto;
   overflow-y: auto;
-  max-height: calc(100vh - 270px);
   background-color: #ddd;
   border: 1px solid #bbb;
   box-shadow: none !important;
@@ -462,7 +568,8 @@ onUnmounted(() => {
 
 /* Tabla base */
 .tabular-table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: separate;
   border-spacing: 0;
   font-size: 0.82rem;
@@ -529,7 +636,7 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
-/* Anchos fijos y posiciones Sticky para Información Personal */
+/* Anchos fijos y posiciones Sticky para Información Personal (Total = 860px) */
 .th-col-orden, .td-col-orden {
   width: 55px;
   min-width: 55px;
@@ -541,9 +648,9 @@ onUnmounted(() => {
 }
 
 .th-col-sede, .td-col-sede {
-  width: 110px;
-  min-width: 110px;
-  max-width: 110px;
+  width: 150px;
+  min-width: 150px;
+  max-width: 150px;
 }
 .sticky-col-2 {
   position: sticky;
@@ -551,43 +658,43 @@ onUnmounted(() => {
 }
 
 .th-col-dni, .td-col-dni {
-  width: 90px;
-  min-width: 90px;
-  max-width: 90px;
+  width: 95px;
+  min-width: 95px;
+  max-width: 95px;
 }
 .sticky-col-3 {
   position: sticky;
-  left: 165px;
+  left: 205px;
 }
 
 .th-col-nombres, .td-col-nombres {
-  width: 250px;
-  min-width: 250px;
-  max-width: 250px;
+  width: 280px;
+  min-width: 280px;
+  max-width: 280px;
 }
 .sticky-col-4 {
   position: sticky;
-  left: 255px;
+  left: 300px;
 }
 
 .th-col-tel, .td-col-tel {
-  width: 100px;
-  min-width: 100px;
-  max-width: 100px;
+  width: 105px;
+  min-width: 105px;
+  max-width: 105px;
 }
 .sticky-col-5 {
   position: sticky;
-  left: 505px;
+  left: 580px;
 }
 
 .th-col-cargo, .td-col-cargo {
-  width: 170px;
-  min-width: 170px;
-  max-width: 170px;
+  width: 175px;
+  min-width: 175px;
+  max-width: 175px;
 }
 .sticky-col-6 {
   position: sticky;
-  left: 605px;
+  left: 685px;
 }
 
 /* Divisor vertical entre la sección fija y la desplazable */
@@ -596,22 +703,28 @@ onUnmounted(() => {
 }
 
 /* Anchos para columnas desplazables */
-.th-col-fecha, .td-col-fecha { width: 95px; min-width: 95px; }
-.th-col-hora, .td-col-hora { width: 65px; min-width: 65px; }
-.th-col-bat, .td-col-bat { width: 65px; min-width: 65px; }
-.th-col-ver, .td-col-ver { width: 55px; min-width: 55px; }
-.th-col-lat, .td-col-lat { width: 105px; min-width: 105px; }
-.th-col-lng, .td-col-lng { width: 105px; min-width: 105px; }
-.th-col-dept, .td-col-dept { width: 130px; min-width: 130px; }
-.th-col-prov, .td-col-prov { width: 130px; min-width: 130px; }
+.th-col-fecha, .td-col-fecha { width: 100px; min-width: 100px; }
+.th-col-hora, .td-col-hora { width: 70px; min-width: 70px; }
+.th-col-bat, .td-col-bat { width: 70px; min-width: 70px; }
+.th-col-ver, .td-col-ver { width: 60px; min-width: 60px; }
+.th-col-lat, .td-col-lat { width: 115px; min-width: 115px; }
+.th-col-lng, .td-col-lng { width: 115px; min-width: 115px; }
+.th-col-dept, .td-col-dept { width: 150px; min-width: 150px; }
+.th-col-prov, .td-col-prov { width: 150px; min-width: 150px; }
+.th-col-dist, .td-col-dist { width: 150px; min-width: 150px; }
 
 /* Celdas del cuerpo */
 .td-cell {
-  padding: 6px 8px;
+  padding: 8px 10px;
   border-bottom: 1px solid #ccc;
   border-right: 1px solid #bbb;
-  white-space: nowrap;
   vertical-align: middle;
+}
+
+.wrap-cell {
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.25;
 }
 
 /* Filas alternadas con fondos sólidos y legibles */
@@ -642,7 +755,7 @@ onUnmounted(() => {
 }
 
 .body-row:hover {
-  background-color: #f0f0f0;
+  background-color: #eeeeee;
 }
 .body-row:hover .sticky-col-1,
 .body-row:hover .sticky-col-2,
@@ -650,7 +763,7 @@ onUnmounted(() => {
 .body-row:hover .sticky-col-4,
 .body-row:hover .sticky-col-5,
 .body-row:hover .sticky-col-6 {
-  background-color: #f0f0f0;
+  background-color: #eeeeee;
 }
 
 /* Encabezados sticky z-index alto */
@@ -671,11 +784,6 @@ onUnmounted(() => {
 .font-bold { font-weight: 700; }
 .font-semibold { font-weight: 600; }
 .text-muted { color: #555; }
-.text-truncate {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
 .cell-message {
   padding: 30px;
@@ -717,6 +825,68 @@ onUnmounted(() => {
   background-color: #eee;
   color: #555;
   border-color: #ccc;
+}
+
+/* Barra de Paginacion de 15 en 15 */
+.pagination-bar {
+  background-color: #ddd;
+  border: 1px solid #bbb;
+  padding: 10px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.pagination-info {
+  font-size: 0.82rem;
+  color: #333;
+  font-weight: 600;
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.page-numbers {
+  display: flex;
+  gap: 4px;
+}
+
+.btn-page {
+  background-color: #eee;
+  color: #222;
+  border: 1px solid #aaa;
+  border-radius: 3px;
+  padding: 5px 10px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: none !important;
+}
+
+.btn-page:hover:not(:disabled) {
+  background-color: #e0e0e0;
+  border-color: #666;
+}
+
+.btn-page:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-page-number {
+  min-width: 32px;
+  text-align: center;
+}
+
+.btn-page-active {
+  background-color: #333 !important;
+  color: #fff !important;
+  border-color: #222 !important;
 }
 
 /* Pie de página */

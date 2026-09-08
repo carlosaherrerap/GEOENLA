@@ -20,21 +20,38 @@
           />
         </div>
       </div>
-      <div class="form-group" style="flex: 2;">
+      <div class="form-group" style="flex: 2; position: relative;">
         <label class="form-label">Seleccionar Usuario *</label>
-        <select v-model="selectedUser" class="form-select" @change="onUserChange">
-          <option value="">-- Selecciona un usuario para ver su trayecto --</option>
-          <optgroup label="USUARIOS ACTIVOS (SESION ACTIVA)" v-if="activeUsers.length > 0">
-            <option v-for="u in activeUsers" :key="u.id" :value="u.id">
-              [ACTIVO] {{ u.username }} {{ u.supervisor ? `(${u.supervisor.nombres} ${u.supervisor.ape_pat})` : '' }}
-            </option>
-          </optgroup>
-          <optgroup label="USUARIOS INACTIVOS (SIN SESION)" v-if="inactiveUsers.length > 0">
-            <option v-for="u in inactiveUsers" :key="u.id" :value="u.id">
-              [INACTIVO] {{ u.username }} {{ u.supervisor ? `(${u.supervisor.nombres} ${u.supervisor.ape_pat})` : '' }}
-            </option>
-          </optgroup>
-        </select>
+        <div class="custom-select-box" @click="showUserDropdown = !showUserDropdown">
+          <div v-if="!selectedUser" class="custom-select-placeholder">-- Selecciona un usuario para ver su trayecto --</div>
+          <div v-else class="custom-select-value">
+            <span :class="['status-dot', selectedUserActive ? 'dot-active' : 'dot-inactive']"></span>
+            <span>{{ selectedUserObj?.username }} {{ selectedUserObj?.supervisor ? `(${selectedUserObj.supervisor.nombres} ${selectedUserObj.supervisor.ape_pat})` : '' }}</span>
+          </div>
+          <i class="ph ph-caret-down" style="font-size: 0.9rem; color: #555;"></i>
+        </div>
+        <div v-if="showUserDropdown" class="custom-dropdown-list">
+          <div v-if="activeUsers.length > 0" class="dropdown-group-label">USUARIOS ACTIVOS (SESION ACTIVA)</div>
+          <div
+            v-for="u in activeUsers"
+            :key="u.id"
+            class="dropdown-item"
+            @click="selectUser(u.id)"
+          >
+            <span class="status-dot dot-active"></span>
+            <span>{{ u.username }} {{ u.supervisor ? `(${u.supervisor.nombres} ${u.supervisor.ape_pat})` : '' }}</span>
+          </div>
+          <div v-if="inactiveUsers.length > 0" class="dropdown-group-label">USUARIOS INACTIVOS (SIN SESION)</div>
+          <div
+            v-for="u in inactiveUsers"
+            :key="u.id"
+            class="dropdown-item"
+            @click="selectUser(u.id)"
+          >
+            <span class="status-dot dot-inactive"></span>
+            <span>{{ u.username }} {{ u.supervisor ? `(${u.supervisor.nombres} ${u.supervisor.ape_pat})` : '' }}</span>
+          </div>
+        </div>
       </div>
       <div class="form-group" style="flex: 1;">
         <label class="form-label">Fecha de Jornada</label>
@@ -215,6 +232,7 @@ const attendances = ref([])
 const trackings = ref([])
 const selectedUser = ref('')
 const userSearchQuery = ref('')
+const showUserDropdown = ref(false)
 function getTodayLocalDate() {
   const d = new Date()
   const year = d.getFullYear()
@@ -343,6 +361,12 @@ function exportUsersToExcel() {
 function onUserChange() {
   hasFittedUserBounds.value = false
   fetchTrackings()
+}
+
+function selectUser(userId) {
+  selectedUser.value = userId
+  showUserDropdown.value = false
+  onUserChange()
 }
 
 async function fetchUsers() {
@@ -594,6 +618,7 @@ async function drawMap() {
     }).addTo(trackingsLayerGroup).bindPopup(`<b>Inicio de Jornada (${uName})</b><br>Hora: ${new Date(firstPoint.recorded_at).toLocaleTimeString()}`)
 
     // Hitos temporales en el recorrido: cada 5 minutos (300,000 ms) sobre el trazado continuo
+    // La hora se muestra SOLO al hacer clic en el marcador blanco (popup), sin etiquetas flotantes
     if (validTrackings.length > 1) {
       let lastMilestoneTime = new Date(validTrackings[0].recorded_at).getTime()
 
@@ -609,29 +634,23 @@ async function drawMap() {
           const timeDate = new Date(pt.recorded_at)
           const hh = String(timeDate.getHours()).padStart(2, '0')
           const mm = String(timeDate.getMinutes()).padStart(2, '0')
+          const ss = String(timeDate.getSeconds()).padStart(2, '0')
           const timeLabel = `${hh}:${mm}`
 
           const milestoneMarker = L.circleMarker(ptCoord, {
-            radius: 5,
+            radius: 6,
             color: '#334155',
             weight: 1.5,
             fillColor: '#ffffff',
             fillOpacity: 1,
           }).addTo(trackingsLayerGroup)
 
-          milestoneMarker.bindTooltip(timeLabel, {
-            permanent: true,
-            direction: 'top',
-            className: 'map-time-milestone',
-            offset: [0, -6]
-          })
-
           const batInfo = pt.battery_level ? `${Math.round(Number(pt.battery_level))}%` : '-'
           const spdInfo = pt.speed ? `${Number(pt.speed).toFixed(1)} km/h` : '-'
           milestoneMarker.bindPopup(`
-            <div style="font-family: sans-serif; font-size: 0.8rem; color: #111;">
-              <strong>Hito de Ruta (5 min)</strong><br>
-              <b>Hora:</b> ${timeLabel}:${String(timeDate.getSeconds()).padStart(2, '0')}<br>
+            <div style="font-family: sans-serif; font-size: 0.85rem; color: #111;">
+              <strong style="font-size: 1.1rem;">${timeLabel}:${ss}</strong><br>
+              <b>Hito de Ruta (5 min)</b><br>
               <b>Bateria:</b> ${batInfo}<br>
               <b>Velocidad:</b> ${spdInfo}
             </div>
@@ -713,10 +732,22 @@ onMounted(async () => {
     await fetchUsers()
     await fetchTrackings()
   }, 10000)
+
+  // Cerrar dropdown personalizado al hacer clic fuera del componente
+  document.addEventListener('click', handleClickOutsideDropdown)
 })
+
+function handleClickOutsideDropdown(e) {
+  const box = document.querySelector('.custom-select-box')
+  const list = document.querySelector('.custom-dropdown-list')
+  if (box && !box.contains(e.target) && (!list || !list.contains(e.target))) {
+    showUserDropdown.value = false
+  }
+}
 
 onUnmounted(() => {
   if (pollInterval) clearInterval(pollInterval)
+  document.removeEventListener('click', handleClickOutsideDropdown)
 })
 </script>
 
@@ -822,19 +853,95 @@ onUnmounted(() => {
   }
 }
 
-:deep(.map-time-milestone) {
-  background-color: #ffffff !important;
-  color: #111111 !important;
-  border: 1px solid #888888 !important;
-  border-radius: 3px !important;
-  padding: 1px 4px !important;
-  font-size: 10px !important;
-  font-weight: 700 !important;
-  font-family: monospace !important;
-  box-shadow: none !important;
-  line-height: 1.2 !important;
+/* Dropdown personalizado con bolitas de estado */
+.custom-select-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: var(--bg-surface, #fff);
+  border: 1px solid var(--border-medium, #ccc);
+  border-radius: var(--radius, 6px);
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 0.88rem;
+  color: var(--text-heading, #111);
+  min-height: 38px;
+  user-select: none;
 }
-:deep(.map-time-milestone::before) {
-  border-top-color: #888888 !important;
+
+.custom-select-box:hover {
+  border-color: var(--primary, #024ad8);
+}
+
+.custom-select-placeholder {
+  color: var(--text-muted, #999);
+  font-size: 0.85rem;
+}
+
+.custom-select-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.custom-dropdown-list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 999;
+  background-color: var(--bg-surface, #fff);
+  border: 1px solid var(--border-medium, #ccc);
+  border-top: none;
+  border-radius: 0 0 var(--radius, 6px) var(--radius, 6px);
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.dropdown-group-label {
+  padding: 6px 12px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, #666);
+  background-color: var(--bg-subtle, #f5f5f5);
+  border-top: 1px solid var(--border-subtle, #eee);
+  border-bottom: 1px solid var(--border-subtle, #eee);
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  font-size: 0.85rem;
+  color: var(--text-heading, #111);
+  cursor: pointer;
+}
+
+.dropdown-item:hover {
+  background-color: var(--bg-subtle, #f0f0f0);
+}
+
+/* Bolitas de estado verde/roja */
+.status-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dot-active {
+  background-color: #16a34a;
+}
+
+.dot-inactive {
+  background-color: #dc2626;
 }
 </style>
