@@ -14,6 +14,9 @@
         <router-link to="/activities" class="nav-item">
           <i class="ph ph-clipboard-text" style="font-size: 1.2rem;"></i> <span>Actividades</span>
         </router-link>
+        <router-link to="/tabular-monitoring" class="nav-item">
+          <i class="ph ph-table" style="font-size: 1.2rem;"></i> <span>Monitoreo Tabular</span>
+        </router-link>
         <router-link to="/map" class="nav-item">
           <i class="ph ph-map-pin-line" style="font-size: 1.2rem;"></i> <span>Mapa en Vivo</span>
         </router-link>

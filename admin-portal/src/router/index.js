@@ -42,6 +42,11 @@ const routes = [
         props: true,
       },
       {
+        path: 'tabular-monitoring',
+        name: 'TabularMonitoring',
+        component: () => import('../views/TabularMonitoringView.vue'),
+      },
+      {
         path: 'map',
         name: 'LiveMap',
         component: () => import('../views/LiveMapView.vue'),

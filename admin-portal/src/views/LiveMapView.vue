@@ -24,14 +24,14 @@
         <label class="form-label">Seleccionar Usuario *</label>
         <select v-model="selectedUser" class="form-select" @change="onUserChange">
           <option value="">-- Selecciona un usuario para ver su trayecto --</option>
-          <optgroup label="🟢 USUARIOS ACTIVOS (SESIÓN ACTIVA)" v-if="activeUsers.length > 0">
+          <optgroup label="USUARIOS ACTIVOS (SESION ACTIVA)" v-if="activeUsers.length > 0">
             <option v-for="u in activeUsers" :key="u.id" :value="u.id">
-              🟢 {{ u.username }} {{ u.supervisor ? `(${u.supervisor.nombres} ${u.supervisor.ape_pat})` : '' }}
+              [ACTIVO] {{ u.username }} {{ u.supervisor ? `(${u.supervisor.nombres} ${u.supervisor.ape_pat})` : '' }}
             </option>
           </optgroup>
-          <optgroup label="🔴 USUARIOS INACTIVOS (SIN SESIÓN)" v-if="inactiveUsers.length > 0">
+          <optgroup label="USUARIOS INACTIVOS (SIN SESION)" v-if="inactiveUsers.length > 0">
             <option v-for="u in inactiveUsers" :key="u.id" :value="u.id">
-              🔴 {{ u.username }} {{ u.supervisor ? `(${u.supervisor.nombres} ${u.supervisor.ape_pat})` : '' }}
+              [INACTIVO] {{ u.username }} {{ u.supervisor ? `(${u.supervisor.nombres} ${u.supervisor.ape_pat})` : '' }}
             </option>
           </optgroup>
         </select>
@@ -593,6 +593,53 @@ async function drawMap() {
       fillOpacity: 1,
     }).addTo(trackingsLayerGroup).bindPopup(`<b>Inicio de Jornada (${uName})</b><br>Hora: ${new Date(firstPoint.recorded_at).toLocaleTimeString()}`)
 
+    // Hitos temporales en el recorrido: cada 5 minutos (300,000 ms) sobre el trazado continuo
+    if (validTrackings.length > 1) {
+      let lastMilestoneTime = new Date(validTrackings[0].recorded_at).getTime()
+
+      for (let i = 1; i < validTrackings.length - 1; i++) {
+        const pt = validTrackings[i]
+        if (!pt.recorded_at) continue
+        const ptTime = new Date(pt.recorded_at).getTime()
+        const diffMs = ptTime - lastMilestoneTime
+
+        if (diffMs >= 300000) {
+          lastMilestoneTime = ptTime
+          const ptCoord = [Number(pt.lat), Number(pt.lng)]
+          const timeDate = new Date(pt.recorded_at)
+          const hh = String(timeDate.getHours()).padStart(2, '0')
+          const mm = String(timeDate.getMinutes()).padStart(2, '0')
+          const timeLabel = `${hh}:${mm}`
+
+          const milestoneMarker = L.circleMarker(ptCoord, {
+            radius: 5,
+            color: '#334155',
+            weight: 1.5,
+            fillColor: '#ffffff',
+            fillOpacity: 1,
+          }).addTo(trackingsLayerGroup)
+
+          milestoneMarker.bindTooltip(timeLabel, {
+            permanent: true,
+            direction: 'top',
+            className: 'map-time-milestone',
+            offset: [0, -6]
+          })
+
+          const batInfo = pt.battery_level ? `${Math.round(Number(pt.battery_level))}%` : '-'
+          const spdInfo = pt.speed ? `${Number(pt.speed).toFixed(1)} km/h` : '-'
+          milestoneMarker.bindPopup(`
+            <div style="font-family: sans-serif; font-size: 0.8rem; color: #111;">
+              <strong>Hito de Ruta (5 min)</strong><br>
+              <b>Hora:</b> ${timeLabel}:${String(timeDate.getSeconds()).padStart(2, '0')}<br>
+              <b>Bateria:</b> ${batInfo}<br>
+              <b>Velocidad:</b> ${spdInfo}
+            </div>
+          `)
+        }
+      }
+    }
+
     // Punto de Ubicación Actual / Fin de jornada (Pin Animado Azul con pulso en vivo)
     const livePulseIcon = L.divIcon({
       className: 'live-pulse-wrapper',
@@ -773,5 +820,21 @@ onUnmounted(() => {
     transform: scale(1.8);
     opacity: 0;
   }
+}
+
+:deep(.map-time-milestone) {
+  background-color: #ffffff !important;
+  color: #111111 !important;
+  border: 1px solid #888888 !important;
+  border-radius: 3px !important;
+  padding: 1px 4px !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  font-family: monospace !important;
+  box-shadow: none !important;
+  line-height: 1.2 !important;
+}
+:deep(.map-time-milestone::before) {
+  border-top-color: #888888 !important;
 }
 </style>

@@ -2386,6 +2386,220 @@ adminRoutes.get('/reports/evidences-zip', async (req: any, res: any) => {
   }
 });
 
+// Cache en memoria para geocodificación inversa tabular
+const geocodeCacheTabular = new Map<string, { departamento: string; provincia: string }>();
+
+async function getReverseGeocodeTabular(
+  lat: number,
+  lng: number,
+  fallbackDept: string,
+  fallbackProv: string
+): Promise<{ departamento: string; provincia: string }> {
+  if (!lat || !lng || (lat === 0 && lng === 0) || isNaN(lat) || isNaN(lng)) {
+    return {
+      departamento: (fallbackDept || 'LIMA').toUpperCase(),
+      provincia: (fallbackProv || 'LIMA').toUpperCase()
+    };
+  }
+
+  const cacheKey = `${lat.toFixed(3)},${lng.toFixed(3)}`;
+  if (geocodeCacheTabular.has(cacheKey)) {
+    return geocodeCacheTabular.get(cacheKey)!;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 1200);
+    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'Accept-Language': 'es',
+        'User-Agent': 'EnlaGeoApp/1.0'
+      }
+    });
+    clearTimeout(timeout);
+
+    if (res.ok) {
+      const data: any = await res.json();
+      const addr = data.address || {};
+      const departamento = (addr.state || addr.region || fallbackDept || 'LIMA').toUpperCase();
+      const provincia = (addr.province || addr.county || addr.city || addr.city_district || fallbackProv || 'LIMA').toUpperCase();
+      const result = { departamento, provincia };
+      geocodeCacheTabular.set(cacheKey, result);
+      return result;
+    }
+  } catch (_e) {
+    // Si falla o timeout, usar fallback
+  }
+
+  const fallback = {
+    departamento: (fallbackDept || 'LIMA').toUpperCase(),
+    provincia: (fallbackProv || 'LIMA').toUpperCase()
+  };
+  geocodeCacheTabular.set(cacheKey, fallback);
+  return fallback;
+}
+
+// Endpoint para el reporte y monitoreo tabular de supervisores
+adminRoutes.get('/supervisors/tabular', async (req: any, res: any) => {
+  try {
+    const { search, sede } = req.query;
+
+    const whereSupervisor: any = {};
+    if (search) {
+      const s = String(search).trim();
+      whereSupervisor.OR = [
+        { nombres: { contains: s, mode: 'insensitive' } },
+        { ape_pat: { contains: s, mode: 'insensitive' } },
+        { ape_mat: { contains: s, mode: 'insensitive' } },
+        { doc: { contains: s, mode: 'insensitive' } },
+        { telefono: { contains: s, mode: 'insensitive' } },
+        { location: { sede_reg: { contains: s, mode: 'insensitive' } } },
+      ];
+    }
+    if (sede) {
+      whereSupervisor.location = {
+        sede_reg: { contains: String(sede).trim(), mode: 'insensitive' }
+      };
+    }
+
+    const allSupervisors = await prisma.supervisors.findMany({
+      where: whereSupervisor,
+      include: {
+        location: true,
+        users: {
+          include: {
+            deviceDetail: true,
+            loginLogs: {
+              orderBy: { created_at: 'desc' },
+              take: 1
+            }
+          }
+        }
+      },
+      orderBy: [
+        { ape_pat: 'asc' },
+        { ape_mat: 'asc' },
+        { nombres: 'asc' }
+      ]
+    });
+
+    const userIds = allSupervisors.flatMap(s => s.users.map(u => u.id));
+    const trackingsMap = new Map<string, any>();
+
+    if (userIds.length > 0) {
+      const userTrackings = await Promise.all(
+        userIds.map(uid =>
+          prisma.trackings.findFirst({
+            where: { id_user: uid },
+            orderBy: { recorded_at: 'desc' },
+            select: {
+              id_user: true,
+              lat: true,
+              lng: true,
+              battery_level: true,
+              recorded_at: true
+            }
+          })
+        )
+      );
+
+      for (const t of userTrackings) {
+        if (t) trackingsMap.set(t.id_user, t);
+      }
+    }
+
+    const tabularRows = await Promise.all(
+      allSupervisors.map(async (sup, index) => {
+        const userObj = sup.users[0] || null;
+        const tracking = userObj ? trackingsMap.get(userObj.id) : null;
+        const deviceDetail = userObj?.deviceDetail || null;
+        const lastLogin = userObj?.loginLogs?.[0] || null;
+
+        const sedeReg = (sup.location?.sede_reg || 'LIMA').toUpperCase();
+        const sedeJuris = (sup.location?.sede_juris || sup.location?.nombre || 'LIMA').toUpperCase();
+        const doc = sup.doc || '-';
+        const apellidosNombres = `${sup.ape_pat || ''} ${sup.ape_mat || ''} ${sup.nombres || ''}`.trim().toUpperCase() || 'SIN NOMBRE';
+        const telefono = sup.telefono || '-';
+        const cargo = 'SUPERVISOR NACIONAL';
+
+        let lastTimestamp: Date | null = null;
+        if (tracking?.recorded_at) {
+          lastTimestamp = new Date(tracking.recorded_at);
+        } else if (deviceDetail?.last_seen_at) {
+          lastTimestamp = new Date(deviceDetail.last_seen_at);
+        } else if (lastLogin?.created_at) {
+          lastTimestamp = new Date(lastLogin.created_at);
+        }
+
+        let fechaReg = '-';
+        let hora = '-';
+        if (lastTimestamp && !isNaN(lastTimestamp.getTime())) {
+          const dd = String(lastTimestamp.getDate()).padStart(2, '0');
+          const mm = String(lastTimestamp.getMonth() + 1).padStart(2, '0');
+          const yyyy = lastTimestamp.getFullYear();
+          const hh = String(lastTimestamp.getHours()).padStart(2, '0');
+          const min = String(lastTimestamp.getMinutes()).padStart(2, '0');
+          fechaReg = `${dd}/${mm}/${yyyy}`;
+          hora = `${hh}:${min}`;
+        }
+
+        let batStr = '-';
+        if (tracking?.battery_level !== null && tracking?.battery_level !== undefined) {
+          batStr = `${Math.round(Number(tracking.battery_level))}%`;
+        } else if (deviceDetail?.battery_level !== null && deviceDetail?.battery_level !== undefined) {
+          batStr = `${Math.round(Number(deviceDetail.battery_level))}%`;
+        }
+
+        const appVersion = deviceDetail?.app_version || lastLogin?.app_version || '1.1';
+
+        const rawLat = tracking ? Number(tracking.lat) : null;
+        const rawLng = tracking ? Number(tracking.lng) : null;
+        const latStr = rawLat !== null && !isNaN(rawLat) ? rawLat.toFixed(7) : '-';
+        const lngStr = rawLng !== null && !isNaN(rawLng) ? rawLng.toFixed(7) : '-';
+
+        const geo = await getReverseGeocodeTabular(
+          rawLat || 0,
+          rawLng || 0,
+          sedeReg,
+          sedeJuris
+        );
+
+        return {
+          id: sup.id,
+          id_user: userObj?.id || null,
+          orden: index + 1,
+          sede_reg: sedeReg,
+          dni: doc,
+          apellidos_nombres: apellidosNombres,
+          telefono,
+          cargo,
+          fecha_reg: fechaReg,
+          hora,
+          bat: batStr,
+          version: appVersion,
+          latitud: latStr,
+          longitud: lngStr,
+          departamento: geo.departamento,
+          provincia: geo.provincia,
+          raw_timestamp: lastTimestamp ? lastTimestamp.toISOString() : null,
+          is_active: lastTimestamp ? (Date.now() - lastTimestamp.getTime()) < 15 * 60 * 1000 : false
+        };
+      })
+    );
+
+    res.json({
+      data: tabularRows,
+      total: tabularRows.length,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err: any) {
+    console.error('[TabularMonitoring ERROR]', err);
+    res.status(500).json({ message: err.message || 'Error al obtener datos tabulares de supervisores.' });
+  }
+});
+
 protectedRoutes.use(adminRoutes);
 app.use('/api', protectedRoutes);
 
