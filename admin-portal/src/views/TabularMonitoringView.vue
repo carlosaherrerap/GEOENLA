@@ -370,7 +370,22 @@ async function fetchData() {
   loading.value = true
   try {
     const res = await api.get('/supervisors/tabular')
-    rows.value = res.data?.data || []
+    const rawRows = res.data?.data || []
+    // Recalcular fecha_reg y hora en la zona horaria LOCAL del navegador
+    // porque el backend (Render) los formatea en UTC
+    rows.value = rawRows.map(r => {
+      if (r.raw_timestamp) {
+        const d = new Date(r.raw_timestamp)
+        const dd = String(d.getDate()).padStart(2, '0')
+        const mm = String(d.getMonth() + 1).padStart(2, '0')
+        const yyyy = d.getFullYear()
+        const hh = String(d.getHours()).padStart(2, '0')
+        const min = String(d.getMinutes()).padStart(2, '0')
+        r.fecha_reg = `${dd}/${mm}/${yyyy}`
+        r.hora = `${hh}:${min}`
+      }
+      return r
+    })
     lastUpdated.value = new Date()
   } catch (err) {
     console.error('Error al cargar datos tabulares:', err)
